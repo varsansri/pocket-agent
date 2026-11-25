@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#ffffff">
+<title>Pocket Agent</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: #1a1a1a; background: #f3f3f1;
+    display: flex; flex-direction: column; height: 100dvh; overflow: hidden;
+    overscroll-behavior: none;
+  }
+  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; touch-action: manipulation; user-select: none; }
+  input { font: inherit; font-size: 16px; }
+
+  /* address bar */
+  .bar { display: flex; gap: 6px; align-items: center; padding: max(8px, env(safe-area-inset-top)) 8px 8px; background: #fff; border-bottom: 1px solid #e4e4e0; }
+  .bar button { width: 40px; height: 40px; border-radius: 10px; font-size: 20px; flex: none; }
+  .bar button:active { background: #ececea; }
+  .bar input { flex: 1; min-width: 0; height: 40px; border: 1px solid #ddd; border-radius: 10px; padding: 0 12px; background: #f7f7f5; }
+
+  /* the browser screen */
+  .screen { flex: 1; min-height: 0; display: flex; justify-content: center; align-items: flex-start; background: #fff; position: relative; }
+  .screen img { max-width: 100%; max-height: 100%; object-fit: contain; touch-action: none; user-select: none; -webkit-user-drag: none; }
+  .screen .wait { position: absolute; inset: 0; display: grid; place-items: center; color: #777; }
+
+  /* AI panel */
+  .ai { background: #fff; border-top: 1px solid #e4e4e0; padding: 10px 10px max(10px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 8px; }
+  .say { font-size: 17px; max-height: 30dvh; overflow-y: auto; white-space: pre-wrap; }
+  .say:empty { display: none; }
+  .status { font-size: 14px; color: #6b6b6b; display: none; align-items: center; gap: 8px; }
+  .busy .status { display: flex; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #2f6fed; animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .25; } }
+
+  .ask { display: none; background: #fff6e0; border: 1px solid #f0d48a; border-radius: 12px; padding: 10px; gap: 8px; flex-direction: column; }
+  .ask.on { display: flex; }
+  .ask p { margin: 0; font-size: 17px; }
+  .ask div { display: flex; gap: 8px; }
+  .ask button { flex: 1; height: 48px; border-radius: 10px; font-weight: 600; font-size: 17px; }
+  .yes { background: #1f8a4c; color: #fff; }
+  .no { background: #ececea; }
+  .ask button:active, .send:active, .chip:active { transform: scale(.97); }
+
+  .chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+  .busy .chips { display: none; }
+  .chip { flex: none; height: 36px; padding: 0 14px; border-radius: 18px; background: #eef2fd; color: #1d4fc4; font-size: 15px; }
+
+  .row { display: flex; gap: 6px; }
+  .row input { flex: 1; min-width: 0; height: 48px; border: 1px solid #ddd; border-radius: 12px; padding: 0 14px; background: #f7f7f5; }
+  .send { width: 72px; height: 48px; border-radius: 12px; background: #2f6fed; color: #fff; font-weight: 600; }
+  .busy .send { background: #c0392b; }
+  .kb { width: 48px; height: 48px; border-radius: 12px; background: #ececea; font-size: 20px; }
+  .typing { display: none; }
+  .typing.on { display: flex; }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <button id="back" aria-label="Back">‹</button>
+    <input id="addr" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search or type a website">
+    <button id="reload" aria-label="Reload">⟳</button>
+  </div>
+
+  <div class="screen" id="screen">
+    <img id="view" alt="">
+    <div class="wait" id="wait">Connecting…</div>
+  </div>
+
+  <div class="ai" id="ai">
+    <div class="ask" id="ask">
+      <p id="askText"></p>
+      <div><button class="no" id="no">No</button><button class="yes" id="yes">Yes, go ahead</button></div>
+    </div>
+    <div class="say" id="say"></div>
+    <div class="status"><span class="dot"></span><span id="status">Thinking…</span></div>
+    <div class="chips">
+      <button class="chip" data-q="Explain this page to me in simple words.">Explain this page</button>
+      <button class="chip" data-q="Summarise this page in 3 short points.">Summarise</button>
+      <button class="chip" data-q="Help me fill in this form. Ask me for anything you need.">Fill this form</button>
+      <button class="chip" data-q="Open Gmail and tell me which new emails look important.">My emails</button>
+      <button class="chip" data-q="What should I do next on this page?">What next?</button>
+    </div>
+    <form class="row typing" id="typing">
+      <input id="typeText" placeholder="Type into the page…" autocomplete="off">
+      <button class="kb" type="button" id="enter" aria-label="Enter">↵</button>
+      <button class="kb" type="button" id="bksp" aria-label="Delete">⌫</button>
+    </form>
+    <form class="row" id="chat">
+      <button class="kb" type="button" id="kb" aria-label="Type into the page">⌨</button>
+      <input id="ask_ai" placeholder="Ask me to do something…" autocomplete="off" enterkeyhint="send">
+      <button class="send" id="send">Go</button>
+    </form>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const key = new URLSearchParams(location.search).get("k");
+let ws, vw = 412, vh = 780, busy = false, askId = null;
+
+function connect() {
+  ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws?k=${encodeURIComponent(key)}`);
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    if (m.t === "frame") { $("view").src = "data:image/jpeg;base64," + m.data; $("wait").style.display = "none"; }
+    else if (m.t === "hello") { vw = m.w; vh = m.h; setUrl(m.url); setBusy(m.busy); }
+    else if (m.t === "url") setUrl(m.url);
+    else if (m.t === "status") $("status").textContent = m.text;
+    else if (m.t === "note") $("say").textContent = m.text;
+    else if (m.t === "ai") $("say").textContent = m.text;
+    else if (m.t === "busy") setBusy(m.on);
+    else if (m.t === "ask") { askId = m.id; $("askText").textContent = m.text; $("ask").classList.add("on"); navigator.vibrate?.(80); }
+    else if (m.t === "ask-clear" && m.id === askId) closeAsk();
+  };
+  ws.onclose = () => { $("wait").style.display = "grid"; $("wait").textContent = "Reconnecting…"; setTimeout(connect, 1500); };
+}
+const out = (m) => ws?.readyState === 1 && ws.send(JSON.stringify(m));
+
+function setUrl(u) { if (document.activeElement !== $("addr")) $("addr").value = u === "about:blank" ? "" : u; }
+function setBusy(on) { busy = on; $("ai").classList.toggle("busy", on); $("send").textContent = on ? "Stop" : "Go"; }
+function closeAsk() { askId = null; $("ask").classList.remove("on"); }
+
+// address bar
+$("addr").addEventListener("keydown", (e) => { if (e.key === "Enter") { out({ t: "go", url: $("addr").value }); $("addr").blur(); } });
+$("addr").addEventListener("focus", () => $("addr").select());
+$("back").onclick = () => out({ t: "back" });
+$("reload").onclick = () => out({ t: "reload" });
+
+// tap and swipe on the screen
+const img = $("view");
+let start = null, lastY = 0;
+function toPage(cx, cy) {
+  const r = img.getBoundingClientRect();
+  return { x: Math.round((cx - r.left) / r.width * vw), y: Math.round((cy - r.top) / r.height * vh) };
+}
+img.addEventListener("pointerdown", (e) => { start = { x: e.clientX, y: e.clientY, moved: false }; lastY = e.clientY; img.setPointerCapture(e.pointerId); });
+img.addEventListener("pointermove", (e) => {
+  if (!start) return;
+  if (Math.abs(e.clientY - start.y) > 8 || Math.abs(e.clientX - start.x) > 8) start.moved = true;
+  if (start.moved) {
+    const r = img.getBoundingClientRect();
+    const dy = (lastY - e.clientY) / r.height * vh;
+    if (Math.abs(dy) > 4) { out({ t: "scroll", dy: Math.round(dy * 1.5) }); lastY = e.clientY; }
+  }
+});
+img.addEventListener("pointerup", (e) => { if (start && !start.moved) out({ t: "tap", ...toPage(e.clientX, e.clientY) }); start = null; });
+img.addEventListener("pointercancel", () => (start = null));
+$("screen").addEventListener("wheel", (e) => { e.preventDefault(); out({ t: "scroll", dy: Math.round(e.deltaY) }); }, { passive: false });
+
+// typing into the page by hand
+$("kb").onclick = () => { $("typing").classList.toggle("on"); if ($("typing").classList.contains("on")) $("typeText").focus(); };
+$("typing").onsubmit = (e) => { e.preventDefault(); const v = $("typeText").value; if (v) out({ t: "type", text: v }); $("typeText").value = ""; };
+$("enter").onclick = () => { const v = $("typeText").value; if (v) out({ t: "type", text: v }); $("typeText").value = ""; out({ t: "key", key: "Enter" }); };
+$("bksp").onclick = () => out({ t: "key", key: "Backspace" });
+
+// the AI
+function ask(text) { if (!text.trim()) return; $("say").textContent = ""; $("status").textContent = "Thinking…"; setBusy(true); out({ t: "chat", text }); }
+$("chat").onsubmit = (e) => {
+  e.preventDefault();
+  if (busy) { out({ t: "stop" }); return; }
+  ask($("ask_ai").value); $("ask_ai").value = ""; $("ask_ai").blur();
+};
+document.querySelectorAll(".chip").forEach((c) => (c.onclick = () => ask(c.dataset.q)));
+$("yes").onclick = () => { out({ t: "answer", id: askId, ok: true }); closeAsk(); };
+$("no").onclick = () => { out({ t: "answer", id: askId, ok: false }); closeAsk(); };
+
+connect();
+</script>
+</body>
+</html>
