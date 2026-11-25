@@ -685,8 +685,12 @@ const server = http.createServer(async (req, res) => {
       return res.writeHead(502).end();
     }
   }
-  // every old hanubees.com address keeps forwarding to the same page on ridkey.com
-  res.writeHead(308, { location: `https://ridkey.com${u.pathname}${u.search}` });
+  // on hanubees.com, every old address keeps forwarding to the same page on ridkey.com
+  if (/^(www\.)?hanubees\.com$/i.test(String(req.headers.host || "").split(":")[0])) {
+    res.writeHead(308, { location: `https://ridkey.com${u.pathname}${u.search}` });
+    return res.end();
+  }
+  res.writeHead(302, { location: "/" });
   res.end();
 });
 
@@ -719,7 +723,7 @@ server.listen(PORT, "0.0.0.0", () => {
     .filter((i) => i && i.family === "IPv4" && !i.internal)
     .map((i) => i.address);
   console.log("\nPocket Agent is running.");
-  console.log(`  Online:         https://hanubees.com/app?k=${KEY}`);
+  console.log(`  Online:         https://agent.ademvnion.com/app?k=${KEY}`);
   console.log(`  On this PC:     http://localhost:${PORT}/app?k=${KEY}`);
   for (const ip of ips) console.log(`  On your phone:  http://${ip}:${PORT}/app?k=${KEY}   (same Wi-Fi)`);
   const brainName = {
