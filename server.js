@@ -21,7 +21,7 @@ const MODEL = "claude-opus-5-5";
 const VIEW = { width: 412, height: 780 };
 const MAX_STEPS = 30;
 
-let client = null; // the phone's live connection
+const clients = new Set(); // every open screen (phone, PC tab...) sees the same browser
 
 // ---------------------------------------------------------------- browser
 const context = await chromium.launchPersistentContext(path.join(here, "browser-profile"), {
@@ -89,7 +89,8 @@ function toUrl(text) {
 
 // ---------------------------------------------------------------- phone link
 function send(msg) {
-  if (client?.readyState === 1) client.send(JSON.stringify(msg));
+  const data = JSON.stringify(msg);
+  for (const c of clients) if (c.readyState === 1) c.send(data);
 }
 
 const pendingAsks = new Map();
@@ -715,8 +716,8 @@ server.on("upgrade", (req, socket, head) => {
   const u = new URL(req.url, "http://x");
   if (u.pathname !== "/ws" || u.searchParams.get("k") !== KEY) return socket.destroy();
   wss.handleUpgrade(req, socket, head, (ws) => {
-    client?.close();
-    client = ws;
+    clients.add(ws);
+    ws.on("close", () => clients.delete(ws));
     ws.send(JSON.stringify({ t: "hello", w: VIEW.width, h: VIEW.height, url: page.url(), busy: Boolean(running) }));
     restartScreencast();
     ws.on("message", (raw) => {
