@@ -47,7 +47,7 @@ async function watch(p) {
     send({ t: "frame", data });
     cdp?.send("Page.screencastFrameAck", { sessionId }).catch(() => {});
   });
-  await cdp.send("Page.startScreencast", { format: "jpeg", quality: 60, everyNthFrame: 1 });
+  await cdp.send("Page.startScreencast", { format: "jpeg", quality: 60, everyNthFrame: 1 }).catch(() => {});
   p.on("framenavigated", (f) => f === p.mainFrame() && send({ t: "url", url: p.url() }));
   p.on("close", () => {
     const rest = context.pages().filter((x) => x !== p);
@@ -58,6 +58,22 @@ async function watch(p) {
 context.on("page", (p) => watch(p)); // new tabs / pop-ups take over the screen
 if (page.url() === "about:blank") await page.goto("https://www.google.com").catch(() => {});
 await watch(page);
+
+// restart the screen stream so a newly connected phone gets a fresh frame;
+// calls are chained so two quick connections can't overlap
+let screencastChain = Promise.resolve();
+function restartScreencast() {
+  screencastChain = screencastChain
+    .then(async () => {
+      await cdp?.send("Page.stopScreencast").catch(() => {});
+      await cdp?.send("Page.startScreencast", { format: "jpeg", quality: 60, everyNthFrame: 1 }).catch(() => {});
+    })
+    .catch(() => {});
+}
+
+// never let one failed browser call take the whole server down
+process.on("unhandledRejection", (e) => console.error("unhandled:", e?.message || e));
+process.on("uncaughtException", (e) => console.error("uncaught:", e?.message || e));
 
 async function settle() {
   await page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => {});
@@ -702,9 +718,7 @@ server.on("upgrade", (req, socket, head) => {
     client?.close();
     client = ws;
     ws.send(JSON.stringify({ t: "hello", w: VIEW.width, h: VIEW.height, url: page.url(), busy: Boolean(running) }));
-    cdp?.send("Page.stopScreencast").then(() =>
-      cdp.send("Page.startScreencast", { format: "jpeg", quality: 60, everyNthFrame: 1 }),
-    );
+    restartScreencast();
     ws.on("message", (raw) => {
       let m;
       try {
