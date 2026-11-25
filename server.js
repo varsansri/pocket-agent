@@ -737,7 +737,7 @@ server.listen(PORT, "0.0.0.0", () => {
     .filter((i) => i && i.family === "IPv4" && !i.internal)
     .map((i) => i.address);
   console.log("\nPocket Agent is running.");
-  console.log(`  Online:         https://agent.ademvnion.com/app?k=${KEY}`);
+  console.log(`  Online:         https://agent.ridkey.com/app?k=${KEY}`);
   console.log(`  On this PC:     http://localhost:${PORT}/app?k=${KEY}`);
   for (const ip of ips) console.log(`  On your phone:  http://${ip}:${PORT}/app?k=${KEY}   (same Wi-Fi)`);
   const brainName = {
