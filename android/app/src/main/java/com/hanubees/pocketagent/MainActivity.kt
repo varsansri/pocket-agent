@@ -241,7 +241,7 @@ class MainActivity : Activity() {
 
         tts = TextToSpeech(this) { }
         web.loadUrl(prefs.getString("lastUrl", null) ?: "https://www.google.com")
-        if (prefs.getString("key", "").isNullOrEmpty()) main.postDelayed({ showSettings(true) }, 400)
+        if (apiKey().isEmpty()) main.postDelayed({ showSettings(true) }, 400)
     }
 
     private fun setupWeb() {
@@ -338,7 +338,7 @@ class MainActivity : Activity() {
     private fun onSend() {
         val text = input.text.toString().trim()
         if (text.isEmpty() || agent != null) return
-        val key = prefs.getString("key", "") ?: ""
+        val key = apiKey()
         if (key.isEmpty()) { showSettings(true); return }
         input.setText("")
         hideKeyboard(input)
@@ -426,7 +426,7 @@ class MainActivity : Activity() {
             }
         })
         val keyBox = EditText(this).apply {
-            hint = "Paste your Gemini key here"
+            hint = if (BuildConfig.BUILT_IN_KEY.isNotEmpty()) "Built-in key in use (hidden)" else "Paste your Gemini key here"
             setText(prefs.getString("key", ""))
             setSingleLine()
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
@@ -445,10 +445,11 @@ class MainActivity : Activity() {
                 val key = keyBox.text.toString().trim().filterNot { it.isWhitespace() }
                 val model = modelBox.text.toString().trim()
                 prefs.edit().putString("key", key).putString("model", model).apply()
-                if (key.isEmpty()) return@setPositiveButton
+                val usable = key.ifEmpty { BuildConfig.BUILT_IN_KEY }
+                if (usable.isEmpty()) return@setPositiveButton
                 Toast.makeText(this, "Checking your key…", Toast.LENGTH_SHORT).show()
                 Thread {
-                    val problem = Gemini(key, model.ifBlank { DEFAULT_MODEL }).ping()
+                    val problem = Gemini(usable, model.ifBlank { DEFAULT_MODEL }).ping()
                     main.post {
                         AlertDialog.Builder(this)
                             .setTitle(if (problem == null) "✓ Your key works" else "The key didn't work")
@@ -479,6 +480,10 @@ class MainActivity : Activity() {
     }
 
     // ------------------------------------------------------------ misc
+    /** A key pasted in Settings wins; otherwise the one built into a personal copy (empty in public builds). */
+    private fun apiKey() = (prefs.getString("key", "") ?: "").ifEmpty { BuildConfig.BUILT_IN_KEY }
+
+
     private fun toUrl(text: String): String {
         val s = text.trim()
         if (Regex("^[a-z][a-z0-9+.-]*://", RegexOption.IGNORE_CASE).containsMatchIn(s)) return s

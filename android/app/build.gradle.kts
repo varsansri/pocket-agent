@@ -11,6 +11,12 @@ val keyProps = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
+// Personal build only (gradlew -Ppersonal): the owner's Gemini key is baked in from a file
+// OUTSIDE the repo. Public builds (GitHub) always have an empty key.
+val builtInKey: String = if (project.hasProperty("personal")) {
+    File(System.getProperty("user.home"), ".pocket-agent-keys/personal-gemini-key.txt").readText().trim()
+} else ""
+
 android {
     namespace = "com.hanubees.pocketagent"
     compileSdk = 36
@@ -21,7 +27,10 @@ android {
         targetSdk = 36
         versionCode = 3
         versionName = "1.0.2"
+        buildConfigField("String", "BUILT_IN_KEY", "\"$builtInKey\"")
+        if (builtInKey.isNotEmpty()) versionNameSuffix = "-personal"
     }
+    buildFeatures { buildConfig = true }
 
     signingConfigs {
         if (keyProps.isNotEmpty()) create("release") {
