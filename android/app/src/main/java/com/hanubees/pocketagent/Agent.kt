@@ -38,6 +38,13 @@ How to work:
 - "Sign in with Google" buttons do not work inside this app. If a site offers another way to log in (email, phone number), suggest that.
 - If something blocks you (captcha, login, error), stop and say plainly what they need to do.
 
+Playing games:
+- You CAN play web games for the person. They like to watch you play, so say yes and play.
+- If they don't name a game, pick a free one that needs no login, like 2048 (play2048.co) or tic-tac-toe (search Google for "tic tac toe" and it shows a board).
+- Most games are one big picture with no numbered items. Use screenshot to see the board, tap_at to tap a spot on it, and press_key for arrow keys, space or enter. Take a new screenshot after every move or two to see what changed.
+- You are slow (a few seconds per move), so turn-based games work (2048, tic-tac-toe, chess, Wordle, sudoku, cards). For fast action games, say kindly that you are too slow for those and offer a turn-based one.
+- Keep playing until the game ends or they say stop, then tell them in one sentence how it went.
+
 How to talk:
 - Short, warm, plain words. No jargon, no technical terms, no long lists.
 - Final answer: 1 to 4 short sentences, or a few simple bullet points if they asked you to summarise.
@@ -74,6 +81,8 @@ How to talk:
         put(decl("scroll", "Scroll the page up or down by about one screen.",
             obj("direction" to t("STRING").put("enum", JSONArray(listOf("up", "down"))).put("format", "enum"), required = listOf("direction"))))
         put(decl("go_to", "Open a web address, or search Google if given words.", obj("url" to t("STRING"), required = listOf("url"))))
+        put(decl("press_key", "Press a keyboard key on the page, e.g. for games: up, down, left, right, space, enter, backspace, escape, tab. Set times to press it several times in a row.",
+            obj("key" to t("STRING").put("enum", JSONArray(KEYS.keys.toList())).put("format", "enum"), "times" to t("INTEGER", "1 to 10, default 1"), required = listOf("key"))))
         put(decl("go_back", "Go back to the previous page."))
         put(decl("ask_user", "Ask the person a yes/no question and wait. You MUST use this before anything that sends, pays, buys, books, posts, deletes or submits, describing exactly what will happen.",
             obj("question" to t("STRING"), required = listOf("question"))))
@@ -82,7 +91,7 @@ How to talk:
     // ------------------------------------------------------------ the loop
     fun run(prompt: String): String {
         val contents = JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", prompt))))
-        for (step in 0 until 30) {
+        for (step in 0 until 80) { // games need many moves; Stop ends it any time
             if (stopped) return "Stopped."
             a.status(if (step == 0) "Thinking…" else "Working…")
             val body = JSONObject()
@@ -164,6 +173,7 @@ How to talk:
             a.ui { a.web.loadUrl(url) }
             settle(); "Now on: ${currentUrl()}"
         }
+        "press_key" -> pressKey(i.optString("key"), i.optInt("times", 1))
         "go_back" -> {
             a.ui { if (a.web.canGoBack()) a.web.goBack() }
             settle(); "Now on: ${currentUrl()}"
@@ -197,11 +207,44 @@ How to talk:
             "Things to tap or type into:\n$list\n\nPage text:\n${o.optString("text")}"
     }
 
-    private fun screenshot(): Shot = a.ui {
-        val w = a.web.width.coerceAtLeast(1)
-        val h = a.web.height.coerceAtLeast(1)
+    private fun pressKey(name: String, timesIn: Int): String {
+        val code = KEYS[name.lowercase()] ?: return "Unknown key. Use one of: ${KEYS.keys.joinToString()}"
+        val times = timesIn.coerceIn(1, 10)
+        a.status("Pressing $name" + if (times > 1) " ×$times" else "")
+        a.ui { if (!a.web.hasFocus()) a.web.requestFocus() }
+        repeat(times) {
+            if (stopped) return "Stopped."
+            a.ui {
+                a.web.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
+                a.web.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
+            }
+            Thread.sleep(250)
+        }
+        Thread.sleep(300)
+        return "Pressed $name" + if (times > 1) " $times times." else "."
+    }
+
+    /** What is really on the screen, including game canvases and videos (PixelCopy), with a fallback. */
+    private fun screenshot(): Shot {
+        val (w, h) = a.ui { a.web.width.coerceAtLeast(1) to a.web.height.coerceAtLeast(1) }
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        a.web.draw(Canvas(bmp))
+        val latch = java.util.concurrent.CountDownLatch(1)
+        var ok = false
+        a.ui {
+            val loc = IntArray(2)
+            a.web.getLocationInWindow(loc)
+            try {
+                android.view.PixelCopy.request(a.window, android.graphics.Rect(loc[0], loc[1], loc[0] + w, loc[1] + h), bmp, { r ->
+                    ok = r == android.view.PixelCopy.SUCCESS; latch.countDown()
+                }, android.os.Handler(android.os.Looper.getMainLooper()))
+            } catch (e: Exception) { latch.countDown() }
+        }
+        latch.await(3, java.util.concurrent.TimeUnit.SECONDS)
+        if (!ok) a.ui { a.web.draw(Canvas(bmp)) }
+        return a.ui { shrink(bmp, w, h) }
+    }
+
+    private fun shrink(bmp: Bitmap, w: Int, h: Int): Shot {
         val tw = minOf(540, w)
         val th = h * tw / w
         val small = Bitmap.createScaledBitmap(bmp, tw, th, true)
@@ -210,7 +253,7 @@ How to talk:
         small.compress(Bitmap.CompressFormat.JPEG, 60, bos)
         if (small !== bmp) small.recycle()
         bmp.recycle()
-        Shot(Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP), tw, th)
+        return Shot(Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP), tw, th)
     }
 
     /** A real finger tap on the WebView, in phone pixels. */
@@ -302,6 +345,13 @@ How to talk:
     }
 
     companion object {
+        private val KEYS = linkedMapOf(
+            "up" to KeyEvent.KEYCODE_DPAD_UP, "down" to KeyEvent.KEYCODE_DPAD_DOWN,
+            "left" to KeyEvent.KEYCODE_DPAD_LEFT, "right" to KeyEvent.KEYCODE_DPAD_RIGHT,
+            "space" to KeyEvent.KEYCODE_SPACE, "enter" to KeyEvent.KEYCODE_ENTER,
+            "backspace" to KeyEvent.KEYCODE_DEL, "escape" to KeyEvent.KEYCODE_ESCAPE, "tab" to KeyEvent.KEYCODE_TAB,
+        )
+
         private val READ_JS = """(function(){
   document.querySelectorAll('[data-pa]').forEach(function(e){e.removeAttribute('data-pa')});
   var sel='a[href],button,input:not([type=hidden]),textarea,select,[role=button],[role=link],[role=tab],[role=checkbox],[role=menuitem],[role=option],[contenteditable=true],[onclick]';

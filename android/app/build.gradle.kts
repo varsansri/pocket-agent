@@ -25,8 +25,8 @@ android {
         applicationId = "com.hanubees.pocketagent"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.0.3"
         buildConfigField("String", "BUILT_IN_KEY", "\"$builtInKey\"")
         if (builtInKey.isNotEmpty()) versionNameSuffix = "-personal"
     }
