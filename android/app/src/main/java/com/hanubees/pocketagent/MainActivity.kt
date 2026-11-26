@@ -351,18 +351,23 @@ class MainActivity : Activity() {
         agent = ag
         setBusy(true)
         Thread {
+            var detail = ""
             val answer = try {
                 ag.run(prompt)
             } catch (e: Gemini.Failed) {
+                detail = e.detail
                 if (ag.stopped) "Stopped." else e.userText
             } catch (e: Exception) {
-                if (ag.stopped) "Stopped." else "Something went wrong. Try again."
+                val at = e.stackTrace.firstOrNull { it.className.contains("pocketagent") }
+                detail = "${e.javaClass.simpleName}: ${e.message?.take(300)}" + (if (at != null) " (at ${at.fileName}:${at.lineNumber})" else "")
+                if (ag.stopped) "Stopped." else "Something broke inside the app."
             }
             main.post {
                 agent = null
                 setBusy(false)
                 chat.add(text to answer)
                 bubble(answer, "ai")
+                if (detail.isNotEmpty() && answer != "Stopped.") bubble("Details: $detail", "note")
                 if (answer != "Stopped.") speak(answer)
             }
         }.start()
@@ -437,10 +442,20 @@ class MainActivity : Activity() {
             .setTitle(if (welcome) "Pocket Agent" else "Settings")
             .setView(box)
             .setPositiveButton("Save") { _, _ ->
-                prefs.edit()
-                    .putString("key", keyBox.text.toString().trim())
-                    .putString("model", modelBox.text.toString().trim())
-                    .apply()
+                val key = keyBox.text.toString().trim().filterNot { it.isWhitespace() }
+                val model = modelBox.text.toString().trim()
+                prefs.edit().putString("key", key).putString("model", model).apply()
+                if (key.isEmpty()) return@setPositiveButton
+                Toast.makeText(this, "Checking your key…", Toast.LENGTH_SHORT).show()
+                Thread {
+                    val problem = Gemini(key, model.ifBlank { DEFAULT_MODEL }).ping()
+                    main.post {
+                        AlertDialog.Builder(this)
+                            .setTitle(if (problem == null) "✓ Your key works" else "The key didn't work")
+                            .setMessage(problem ?: "All set. Tell me what to do in the box at the bottom.")
+                            .setPositiveButton("OK", null).show()
+                    }
+                }.start()
             }
             .setNegativeButton("Later", null)
             .show()
