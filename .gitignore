@@ -4,3 +4,4 @@ agent-home/
 .env
 access-key.txt
 bin/
+saved-info.json

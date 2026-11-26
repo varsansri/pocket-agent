@@ -1,0 +1,10 @@
+# copy to ~/.cloudflared/config.yml on the server, next to 311d64ea-...json
+tunnel: 311d64ea-60ba-4c48-901c-ab9ad56d9caa
+protocol: http2
+credentials-file: /home/ubuntu/.cloudflared/311d64ea-60ba-4c48-901c-ab9ad56d9caa.json
+ingress:
+  - hostname: hanubees.com
+    service: http://localhost:8787
+  - hostname: www.hanubees.com
+    service: http://localhost:8787
+  - service: http_status:404

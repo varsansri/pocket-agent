@@ -17,8 +17,18 @@ const PORT = Number(process.env.PORT || 8787);
 const keyFile = path.join(here, "access-key.txt");
 if (!process.env.ACCESS_KEY && !fs.existsSync(keyFile)) fs.writeFileSync(keyFile, crypto.randomBytes(9).toString("base64url"));
 const KEY = process.env.ACCESS_KEY || fs.readFileSync(keyFile, "utf8").trim();
+
+// After the key is used once, a cookie remembers the phone, so plain /app works.
+function hasKeyCookie(req) {
+  return String(req.headers.cookie || "").split(/;\s*/).some((c) => c === `pa_k=${KEY}`);
+}
+function keyCookie(req) {
+  const https = String(req.headers["x-forwarded-proto"] || req.headers["cf-visitor"] || "").includes("https");
+  return `pa_k=${KEY}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax${https ? "; Secure" : ""}`;
+}
 const MODEL = "claude-opus-5-5";
-const VIEW = { width: 412, height: 780 };
+// the browser's screen size; the phone tells us its real size and sharpness
+const VIEW = { width: 412, height: 780, scale: 2 };
 const MAX_STEPS = 30;
 
 const clients = new Set(); // every open screen (phone, PC tab...) sees the same browser
@@ -27,7 +37,7 @@ const clients = new Set(); // every open screen (phone, PC tab...) sees the same
 const context = await chromium.launchPersistentContext(path.join(here, "browser-profile"), {
   headless: true,
   viewport: VIEW,
-  deviceScaleFactor: 1,
+  deviceScaleFactor: 2,
   isMobile: true,
   hasTouch: true,
   locale: "en-IN",
@@ -43,11 +53,13 @@ async function watch(p) {
   page = p;
   if (cdp) await cdp.detach().catch(() => {});
   cdp = await context.newCDPSession(p);
+  await applyMetrics();
   cdp.on("Page.screencastFrame", ({ data, sessionId }) => {
     send({ t: "frame", data });
+    scheduleFieldScan();
     cdp?.send("Page.screencastFrameAck", { sessionId }).catch(() => {});
   });
-  await cdp.send("Page.startScreencast", { format: "jpeg", quality: 60, everyNthFrame: 1 }).catch(() => {});
+  await cdp.send("Page.startScreencast", streamOpts()).catch(() => {});
   p.on("framenavigated", (f) => f === p.mainFrame() && send({ t: "url", url: p.url() }));
   p.on("close", () => {
     const rest = context.pages().filter((x) => x !== p);
@@ -59,6 +71,24 @@ context.on("page", (p) => watch(p)); // new tabs / pop-ups take over the screen
 if (page.url() === "about:blank") await page.goto("https://www.google.com").catch(() => {});
 await watch(page);
 
+// The live picture is sent smaller than the page is drawn: 1.5x sharpness and
+// quality 60 is about a quarter of the data of full 3x / 82, so it keeps up.
+function streamOpts() {
+  return { format: "jpeg", quality: 60, everyNthFrame: 1, maxWidth: Math.round(VIEW.width * 1.5), maxHeight: Math.round(VIEW.height * 1.5) };
+}
+
+// make the browser exactly the phone's screen size and sharpness
+async function applyMetrics() {
+  await cdp
+    ?.send("Emulation.setDeviceMetricsOverride", {
+      width: VIEW.width,
+      height: VIEW.height,
+      deviceScaleFactor: VIEW.scale,
+      mobile: true,
+    })
+    .catch(() => {});
+}
+
 // restart the screen stream so a newly connected phone gets a fresh frame;
 // calls are chained so two quick connections can't overlap
 let screencastChain = Promise.resolve();
@@ -66,7 +96,7 @@ function restartScreencast() {
   screencastChain = screencastChain
     .then(async () => {
       await cdp?.send("Page.stopScreencast").catch(() => {});
-      await cdp?.send("Page.startScreencast", { format: "jpeg", quality: 60, everyNthFrame: 1 }).catch(() => {});
+      await cdp?.send("Page.startScreencast", streamOpts()).catch(() => {});
     })
     .catch(() => {});
 }
@@ -103,7 +133,69 @@ function askPhone(text) {
 // ---------------------------------------------------------------- AI tools
 const RISKY = /\b(send|pay|buy|purchase|order|checkout|place order|delete|remove|submit|post|publish|transfer|confirm|book|subscribe|unsubscribe|sign out|log out)\b/i;
 
+// ---------------------------------------------------------------- saved info (the person's notebook)
+// "Save my address", "remember my bus stop is..." -> kept in saved-info.json and shown to the AI
+// at the start of every task, so "use my saved details" just works.
+const infoFile = path.join(here, "saved-info.json");
+let savedInfo = [];
+try { savedInfo = JSON.parse(fs.readFileSync(infoFile, "utf8")); } catch {}
+function writeInfo() {
+  fs.writeFileSync(infoFile, JSON.stringify(savedInfo, null, 2));
+  send({ t: "notes", list: savedInfo });
+}
+// things that must never be stored, even if asked
+const SECRET = /\b(password|passcode|pass code|pwd|otp|one[- ]time|cvv|cvc|upi pin|atm pin|pin|security code)\b/i;
+function looksLikeCard(text) {
+  for (const m of String(text).matchAll(/\b(?:\d[ -]?){13,19}\b/g)) {
+    const d = m[0].replace(/\D/g, "");
+    let sum = 0;
+    for (let i = 0; i < d.length; i++) { let n = +d[d.length - 1 - i]; if (i % 2) { n *= 2; if (n > 9) n -= 9; } sum += n; }
+    if (sum % 10 === 0) return true;
+  }
+  return false;
+}
+function saveInfo(label, text) {
+  label = String(label || "").trim().slice(0, 80);
+  text = String(text || "").trim().slice(0, 2000);
+  if (!label || !text) return "Nothing saved: say what to call it and what to save.";
+  if (SECRET.test(label) || SECRET.test(text) || looksLikeCard(text))
+    return "Not saved. Passwords, PINs, OTPs and card numbers are never stored. Tell the person kindly that they type those themselves.";
+  const old = savedInfo.find((x) => x.label.toLowerCase() === label.toLowerCase());
+  if (old) Object.assign(old, { text, updated: new Date().toISOString() });
+  else savedInfo.push({ label, text, updated: new Date().toISOString() });
+  if (savedInfo.length > 200) savedInfo.shift();
+  writeInfo();
+  return `Saved "${label}".`;
+}
+function forgetInfo(label) {
+  const before = savedInfo.length;
+  savedInfo = savedInfo.filter((x) => x.label.toLowerCase() !== String(label || "").trim().toLowerCase());
+  if (savedInfo.length === before) return `Nothing called "${label}" is saved.`;
+  writeInfo();
+  return `Forgot "${label}".`;
+}
+function savedInfoText() {
+  if (!savedInfo.length) return "Nothing saved yet.";
+  return savedInfo.map((x) => `- ${x.label}: ${x.text}`).join("\n").slice(0, 12000);
+}
+
 const tools = [
+  {
+    name: "save_info",
+    description:
+      "Save something the person asks you to remember for later (address, name, email, phone, ID numbers, bus stop, favourite shop, notes, text from a page...). Same label again = replace it. Never use for passwords, PINs, OTPs or card numbers.",
+    input_schema: {
+      type: "object",
+      properties: { label: { type: "string", description: "Short name, e.g. 'Home address'" }, text: { type: "string" } },
+      required: ["label", "text"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "forget_info",
+    description: "Delete one saved item when the person asks you to forget it.",
+    input_schema: { type: "object", properties: { label: { type: "string" } }, required: ["label"], additionalProperties: false },
+  },
   {
     name: "read_page",
     description:
@@ -246,6 +338,10 @@ async function guard(label) {
 
 async function runTool(name, input) {
   switch (name) {
+    case "save_info":
+      return saveInfo(input.label, input.text);
+    case "forget_info":
+      return forgetInfo(input.label);
     case "read_page":
       return readPage();
     case "screenshot": {
@@ -317,7 +413,7 @@ async function runTool(name, input) {
 }
 
 // ---------------------------------------------------------------- AI loop
-const SYSTEM = `You are Pocket Agent, a friendly helper inside a phone browser. The person is usually 35-45 and not technical.
+const SYSTEM_BASE = `You are Pocket Agent, a friendly helper inside a phone browser. The person is usually 35-45 and not technical.
 You can see and control the browser on their screen with your tools.
 
 How to work:
@@ -329,7 +425,15 @@ How to work:
 How to talk:
 - Short, warm, plain words. No jargon, no technical terms, no long lists.
 - Final answer: 1 to 4 short sentences, or a few simple bullet points if they asked you to summarise.
-- Reply in the language the person writes in.`;
+- Reply in the language the person writes in.
+- When the person says "save", "remember", "note this" or "keep this", call save_info. When they say "use my saved details", "you already have it", "my address", "my usual...", use the saved info below. Filling a form: use saved info first and only ask for what is missing.
+- Never save passwords, PINs, OTPs or card numbers.
+- Your final answer and your ask_user questions are read out loud by the phone. Write them as natural speech: whole sentences, no bullet symbols, no markdown, no web addresses, no emojis. Put the most important thing first, so it still makes sense if they say "stop" halfway.`;
+// the saved info goes in fresh at the start of every task
+const systemPrompt = () => `${SYSTEM_BASE}
+
+The person's saved info (theirs, use it when it helps):
+${savedInfoText()}`;
 
 // Which brain: with an API key use the Claude API directly; without one,
 // use Claude Code on this PC (runs on the PC owner's Claude login, no key).
@@ -402,7 +506,7 @@ function brainClaudeCode(prompt, abort) {
     "--strict-mcp-config",
     "--allowedTools", "mcp__pocket",
     "--permission-mode", "dontAsk",
-    "--system-prompt", SYSTEM,
+    "--system-prompt", systemPrompt(),
     "--no-session-persistence",
     "--disable-slash-commands",
     "--setting-sources", "project",
@@ -481,7 +585,7 @@ async function brainGemini(prompt, abort) {
         model: GEMINI_MODEL,
         contents,
         config: {
-          systemInstruction: SYSTEM,
+          systemInstruction: systemPrompt(),
           tools: [{ functionDeclarations: declarations }],
           abortSignal: abort.signal,
         },
@@ -537,7 +641,7 @@ async function brainApi(prompt, abort) {
           betas: ["server-side-fallback-2026-07-01"],
           fallbacks: "default",
           output_config: { effort: "medium" },
-          system: SYSTEM,
+          system: systemPrompt(),
           tools,
           messages,
         },
@@ -574,12 +678,106 @@ async function brainApi(prompt, abort) {
   return finalText;
 }
 
+// ---------------------------------------------------------------- where the text boxes are
+// The phone needs this BEFORE a tap: a phone only opens its keyboard inside the tap itself,
+// so it must already know whether the finger is on a text box.
+let scanTimer = null, lastFields = "";
+function scheduleFieldScan() {
+  if (scanTimer) return;
+  scanTimer = setTimeout(async () => {
+    scanTimer = null;
+    const list = await page
+      .evaluate(() => {
+        const out = [];
+        const skip = ["button", "submit", "reset", "checkbox", "radio", "range", "color", "file", "image", "hidden"];
+        for (const e of document.querySelectorAll("input,textarea,select,[contenteditable=''],[contenteditable=true]")) {
+          if (e.disabled || e.readOnly) continue;
+          const t = (e.type || "").toLowerCase();
+          if (e.tagName === "INPUT" && skip.includes(t)) continue;
+          const r = e.getBoundingClientRect();
+          if (r.width < 4 || r.height < 4 || r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth) continue;
+          const st = getComputedStyle(e);
+          if (st.visibility === "hidden" || st.display === "none") continue;
+          const kind = e.tagName === "SELECT" ? "select" : e.tagName === "TEXTAREA" || e.isContentEditable ? "text" : t || "text";
+          out.push([Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height), kind]);
+          if (out.length > 120) break;
+        }
+        return out;
+      })
+      .catch(() => null);
+    if (!list) return;
+    const j = JSON.stringify(list);
+    if (j !== lastFields) { lastFields = j; send({ t: "fields", list }); }
+  }, 350);
+}
+
+// a <select> opened on the PC draws its list off-screen, so the phone shows the choices itself
+async function offerSelect() {
+  const info = await page
+    .evaluate(() => {
+      const e = document.activeElement;
+      if (!e || e.tagName !== "SELECT") return null;
+      return { options: [...e.options].slice(0, 400).map((o, i) => ({ i, label: o.label || o.text, disabled: o.disabled })), selected: e.selectedIndex };
+    })
+    .catch(() => null);
+  if (info) send({ t: "select", ...info });
+  return Boolean(info);
+}
+
 // ---------------------------------------------------------------- phone input
+let inputChain = Promise.resolve();
 async function onMessage(m) {
   switch (m.t) {
-    case "tap":
+    case "tap": {
       await page.touchscreen.tap(m.x, m.y);
+      // if the tap landed in a text box, tell the phone to open its keyboard
+      await page.waitForTimeout(150);
+      if (await offerSelect()) { send({ t: "kbd", on: false }); break; }
+      const box = await page
+        .evaluate(() => {
+          const e = document.activeElement;
+          if (!e || e === document.body) return null;
+          const t = (e.type || "").toLowerCase();
+          if (e.isContentEditable || e.tagName === "TEXTAREA") return "text";
+          if (e.tagName === "INPUT" && !["button", "submit", "reset", "checkbox", "radio", "range", "color", "file", "image"].includes(t)) return t || "text";
+          return null;
+        })
+        .catch(() => null);
+      send({ t: "kbd", on: Boolean(box), kind: box });
       break;
+    }
+    case "text":
+      await page.keyboard.insertText(String(m.text).slice(0, 2000));
+      break;
+    case "forget":
+      forgetInfo(m.label);
+      break;
+    case "pick": {
+      // choose an option in the <select> the phone showed
+      const i = Number(m.i);
+      await page
+        .evaluate((i) => {
+          const e = document.activeElement;
+          if (!e || e.tagName !== "SELECT" || !e.options[i]) return;
+          e.selectedIndex = i;
+          e.dispatchEvent(new Event("input", { bubbles: true }));
+          e.dispatchEvent(new Event("change", { bubbles: true }));
+        }, i)
+        .catch(() => {});
+      await page.keyboard.press("Escape").catch(() => {});
+      break;
+    }
+    case "size": {
+      const w = Math.round(Math.min(Math.max(Number(m.w) || 412, 300), 600));
+      const h = Math.round(Math.min(Math.max(Number(m.h) || 780, 300), 1200));
+      const scale = Math.min(Math.max(Number(m.dpr) || 1, 1), 2);
+      if (w === VIEW.width && h === VIEW.height && scale === VIEW.scale) break;
+      Object.assign(VIEW, { width: w, height: h, scale });
+      await applyMetrics();
+      send({ t: "vp", w, h });
+      restartScreencast();
+      break;
+    }
     case "scroll":
       await page.mouse.move(VIEW.width / 2, VIEW.height / 2);
       await page.mouse.wheel(0, m.dy);
@@ -588,7 +786,8 @@ async function onMessage(m) {
       await page.keyboard.type(String(m.text).slice(0, 2000));
       break;
     case "key":
-      if (["Enter", "Backspace", "Tab", "Escape"].includes(m.key)) await page.keyboard.press(m.key);
+      if (["Enter", "Backspace", "Delete", "Tab", "Escape", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(m.key))
+        await page.keyboard.press(m.key);
       break;
     case "go":
       await page.goto(toUrl(String(m.url)), { timeout: 20000 }).catch(() => {});
@@ -654,7 +853,16 @@ const server = http.createServer(async (req, res) => {
   }
   // the app itself: only with the key
   if (u.pathname === "/app") {
-    if (u.searchParams.get("k") !== KEY) {
+    {
+      const k = u.searchParams.get("k");
+      console.log(`[app] host=${req.headers.host} key=${k === null ? "none" : k === KEY ? "ok" : `WRONG(len ${k.length})`} remembered=${hasKeyCookie(req)} raw=${JSON.stringify(req.url.replace(KEY, "<KEY>")).slice(0, 80)} ua=${String(req.headers["user-agent"] || "").slice(0, 70)}`);
+    }
+    // opened once with the key: remember this phone and clean the address
+    if (u.searchParams.get("k") === KEY) {
+      res.writeHead(302, { location: "/app", "set-cookie": keyCookie(req), "cache-control": "no-store" });
+      return res.end();
+    }
+    if (!hasKeyCookie(req)) {
       res.writeHead(302, { location: "/" });
       return res.end();
     }
@@ -664,7 +872,7 @@ const server = http.createServer(async (req, res) => {
   // public home page
   if (u.pathname === "/") {
     if (u.searchParams.get("k") === KEY) {
-      res.writeHead(302, { location: `/app?k=${KEY}` });
+      res.writeHead(302, { location: "/app", "set-cookie": keyCookie(req), "cache-control": "no-store" });
       return res.end();
     }
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300" });
@@ -714,12 +922,15 @@ const server = http.createServer(async (req, res) => {
 const wss = new WebSocketServer({ noServer: true });
 server.on("upgrade", (req, socket, head) => {
   const u = new URL(req.url, "http://x");
-  if (u.pathname !== "/ws" || u.searchParams.get("k") !== KEY) return socket.destroy();
+  if (u.pathname !== "/ws" || (u.searchParams.get("k") !== KEY && !hasKeyCookie(req))) return socket.destroy();
   wss.handleUpgrade(req, socket, head, (ws) => {
     clients.add(ws);
     ws.on("close", () => clients.delete(ws));
     ws.send(JSON.stringify({ t: "hello", w: VIEW.width, h: VIEW.height, url: page.url(), busy: Boolean(running) }));
     restartScreencast();
+    ws.send(JSON.stringify({ t: "notes", list: savedInfo }));
+    lastFields = ""; // make the next scan reach this new screen too
+    scheduleFieldScan();
     ws.on("message", (raw) => {
       let m;
       try {
@@ -727,7 +938,13 @@ server.on("upgrade", (req, socket, head) => {
       } catch {
         return;
       }
-      onMessage(m).catch((e) => console.error("input error:", e.message));
+      // taps and keys run one after another, in the order they were sent;
+      // chat / stop / answers go straight through so Stop always works
+      if (["chat", "stop", "answer"].includes(m.t)) {
+        onMessage(m).catch((e) => console.error("input error:", e.message));
+      } else {
+        inputChain = inputChain.then(() => onMessage(m)).catch((e) => console.error("input error:", e.message));
+      }
     });
   });
 });
@@ -738,7 +955,7 @@ server.listen(PORT, "0.0.0.0", () => {
     .filter((i) => i && i.family === "IPv4" && !i.internal)
     .map((i) => i.address);
   console.log("\nPocket Agent is running.");
-  console.log(`  Online:         https://agent.ridkey.com/app?k=${KEY}`);
+  console.log(`  Online:         https://hanubees.com/app?k=${KEY}   (first time; after that just hanubees.com/app)`);
   console.log(`  On this PC:     http://localhost:${PORT}/app?k=${KEY}`);
   for (const ip of ips) console.log(`  On your phone:  http://${ip}:${PORT}/app?k=${KEY}   (same Wi-Fi)`);
   const brainName = {

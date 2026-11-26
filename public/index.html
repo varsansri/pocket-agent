@@ -2,171 +2,478 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#ffffff">
+<meta name="robots" content="noindex">
 <title>Pocket Agent</title>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; }
   body {
     font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    color: #1a1a1a; background: #f3f3f1;
+    color: #1a1a1a; background: #fff;
     display: flex; flex-direction: column; height: 100dvh; overflow: hidden;
     overscroll-behavior: none;
   }
-  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; touch-action: manipulation; user-select: none; }
-  input { font: inherit; font-size: 16px; }
+  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+  input, textarea { font: inherit; font-size: 16px; }
 
-  /* address bar */
-  .bar { display: flex; gap: 6px; align-items: center; padding: max(8px, env(safe-area-inset-top)) 8px 8px; background: #fff; border-bottom: 1px solid #e4e4e0; }
-  .bar button { width: 40px; height: 40px; border-radius: 10px; font-size: 20px; flex: none; }
-  .bar button:active { background: #ececea; }
-  .bar input { flex: 1; min-width: 0; height: 40px; border: 1px solid #ddd; border-radius: 10px; padding: 0 12px; background: #f7f7f5; }
+  /* address bar, like a phone browser */
+  .bar { flex: none; display: flex; gap: 4px; align-items: center; padding: max(6px, env(safe-area-inset-top)) 6px 6px; background: #fff; border-bottom: 1px solid #ececea; }
+  .bar button { width: 38px; height: 38px; border-radius: 50%; font-size: 20px; flex: none; color: #444; }
+  .bar button:active { background: #efefed; }
+  .bar input { flex: 1; min-width: 0; height: 38px; border: 0; border-radius: 19px; padding: 0 14px; background: #f1f1ef; color: #333; }
+  .bar input:focus { outline: 2px solid #2f6fed; background: #fff; }
+  .load { position: absolute; left: 0; height: 2px; background: #2f6fed; width: 0; transition: width .4s ease-out, opacity .3s; }
 
-  /* the browser screen */
-  .screen { flex: 1; min-height: 0; display: flex; justify-content: center; align-items: flex-start; background: #fff; position: relative; }
-  .screen img { max-width: 100%; max-height: 100%; object-fit: contain; touch-action: none; user-select: none; -webkit-user-drag: none; }
-  .screen .wait { position: absolute; inset: 0; display: grid; place-items: center; color: #777; }
+  /* the page itself fills the rest of the phone */
+  .screen { flex: 1; min-height: 0; position: relative; background: #fff; overflow: hidden; touch-action: none; }
+  .screen img { display: block; max-width: 100%; max-height: 100%; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; -webkit-touch-callout: none; }
+  .wait { position: absolute; inset: 0; display: grid; place-items: center; color: #888; background: #fff; }
 
-  /* AI panel */
-  .ai { background: #fff; border-top: 1px solid #e4e4e0; padding: 10px 10px max(10px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 8px; }
-  .say { font-size: 17px; max-height: 30dvh; overflow-y: auto; white-space: pre-wrap; }
+  /* hidden box that receives the phone keyboard */
+  #kb { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; resize: none; caret-color: transparent; }
+  .kbbtn { position: absolute; left: 12px; bottom: 12px; height: 40px; padding: 0 14px; border-radius: 20px; background: #1a1a1a; color: #fff; font-size: 15px; display: none; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
+  .kbbtn.on { display: block; }
+
+  /* choices of a dropdown on the page, shown as a list you can tap */
+  .pick { position: absolute; inset: 0; background: rgba(0,0,0,.35); display: none; align-items: flex-end; z-index: 6; }
+  .pick.on { display: flex; }
+  .pick .list { width: 100%; max-height: 70%; overflow-y: auto; background: #fff; border-radius: 18px 18px 0 0; padding: 8px 0 max(8px, env(safe-area-inset-bottom)); overscroll-behavior: contain; }
+  .pick .list button { display: block; width: 100%; text-align: left; padding: 13px 18px; font-size: 17px; border-bottom: 1px solid #f0f0ee; }
+  .pick .list button.sel { color: #2f6fed; font-weight: 600; }
+  .pick .list button:disabled { color: #aaa; }
+  .pick .list button:active { background: #f3f5fb; }
+
+  /* AI button */
+  .fab { position: absolute; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); height: 48px; min-width: 48px; padding: 0 16px; border-radius: 24px; background: #2f6fed; color: #fff; font-weight: 600; display: flex; align-items: center; gap: 8px; box-shadow: 0 6px 18px rgba(47,111,237,.35); transition: transform .15s ease-out; max-width: calc(100% - 24px); }
+  .fab:active { transform: scale(.96); }
+  .fab .st { font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55vw; display: none; }
+  .busy .fab .st { display: inline; }
+  .spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; animation: spin .8s linear infinite; display: none; }
+  .busy .spin { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* AI panel slides up from the bottom */
+  .sheet { position: absolute; left: 0; right: 0; bottom: 0; background: #fff; border-radius: 18px 18px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,.15); padding: 8px 12px max(12px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; transform: translateY(105%); transition: transform .25s cubic-bezier(.2,.8,.2,1); max-height: 75%; }
+  .open .sheet { transform: none; }
+  .open .fab { display: none; }
+  .grab { align-self: center; width: 40px; height: 4px; border-radius: 2px; background: #ddd; margin-bottom: 2px; }
+  .head { display: flex; align-items: center; justify-content: space-between; font-weight: 600; }
+  .head button { width: 36px; height: 36px; border-radius: 50%; font-size: 18px; color: #666; }
+  .say { font-size: 17px; overflow-y: auto; white-space: pre-wrap; min-height: 0; }
   .say:empty { display: none; }
   .status { font-size: 14px; color: #6b6b6b; display: none; align-items: center; gap: 8px; }
   .busy .status { display: flex; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: #2f6fed; animation: pulse 1s ease-in-out infinite; }
   @keyframes pulse { 50% { opacity: .25; } }
+  .chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; flex: none; }
+  .busy .chips { display: none; }
+  .chip { flex: none; height: 36px; padding: 0 14px; border-radius: 18px; background: #eef2fd; color: #1d4fc4; font-size: 15px; }
+  .row { display: flex; gap: 6px; flex: none; }
+  .row input { flex: 1; min-width: 0; height: 48px; border: 1px solid #ddd; border-radius: 12px; padding: 0 14px; background: #f7f7f5; }
+  .send { width: 72px; height: 48px; border-radius: 12px; background: #2f6fed; color: #fff; font-weight: 600; }
+  .busy .send { background: #c0392b; }
+  .chip:active, .send:active { transform: scale(.97); }
 
-  .ask { display: none; background: #fff6e0; border: 1px solid #f0d48a; border-radius: 12px; padding: 10px; gap: 8px; flex-direction: column; }
+  /* voice */
+  .mic { width: 48px; height: 48px; border-radius: 12px; background: #eef2fd; color: #1d4fc4; font-size: 20px; flex: none; }
+  .mic.on { background: #c0392b; color: #fff; animation: pulse 1s ease-in-out infinite; }
+  .mic[hidden] { display: none; }
+  .hush { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); height: 44px; padding: 0 18px; border-radius: 22px; background: #1a1a1a; color: #fff; font-weight: 600; display: none; align-items: center; gap: 8px; z-index: 7; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+  .hush.on { display: flex; }
+  .hush i { width: 10px; height: 10px; background: #fff; border-radius: 2px; }
+  .heard { font-size: 14px; color: #6b6b6b; min-height: 0; }
+  .heard:empty { display: none; }
+
+  /* saved info list */
+  .notes { position: absolute; inset: 0; background: #fff; z-index: 8; display: none; flex-direction: column; }
+  .notes.on { display: flex; }
+  .notes header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; font-weight: 600; border-bottom: 1px solid #ececea; }
+  .notes header button { width: 36px; height: 36px; border-radius: 50%; font-size: 18px; color: #666; }
+  .notes .items { overflow-y: auto; padding: 6px 14px max(14px, env(safe-area-inset-bottom)); }
+  .notes .it { display: flex; gap: 10px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid #f0f0ee; }
+  .notes .it div { flex: 1; min-width: 0; }
+  .notes .it b { display: block; font-size: 15px; }
+  .notes .it span { display: block; color: #555; font-size: 15px; white-space: pre-wrap; word-break: break-word; }
+  .notes .it button { color: #c0392b; font-size: 14px; padding: 6px 10px; border-radius: 8px; background: #fbeeee; flex: none; }
+  .notes .empty { color: #777; padding: 20px 0; line-height: 1.5; }
+
+  /* Yes / No always shows on top, even when the panel is closed */
+  .ask { position: absolute; left: 10px; right: 10px; bottom: max(10px, env(safe-area-inset-bottom)); background: #fff6e0; border: 1px solid #f0d48a; border-radius: 14px; padding: 12px; display: none; flex-direction: column; gap: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.18); z-index: 5; }
   .ask.on { display: flex; }
   .ask p { margin: 0; font-size: 17px; }
   .ask div { display: flex; gap: 8px; }
   .ask button { flex: 1; height: 48px; border-radius: 10px; font-weight: 600; font-size: 17px; }
   .yes { background: #1f8a4c; color: #fff; }
   .no { background: #ececea; }
-  .ask button:active, .send:active, .chip:active { transform: scale(.97); }
-
-  .chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
-  .busy .chips { display: none; }
-  .chip { flex: none; height: 36px; padding: 0 14px; border-radius: 18px; background: #eef2fd; color: #1d4fc4; font-size: 15px; }
-
-  .row { display: flex; gap: 6px; }
-  .row input { flex: 1; min-width: 0; height: 48px; border: 1px solid #ddd; border-radius: 12px; padding: 0 14px; background: #f7f7f5; }
-  .send { width: 72px; height: 48px; border-radius: 12px; background: #2f6fed; color: #fff; font-weight: 600; }
-  .busy .send { background: #c0392b; }
-  .kb { width: 48px; height: 48px; border-radius: 12px; background: #ececea; font-size: 20px; }
-  .typing { display: none; }
-  .typing.on { display: flex; }
 </style>
 </head>
 <body>
   <div class="bar">
     <button id="back" aria-label="Back">‹</button>
-    <input id="addr" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search or type a website">
+    <input id="addr" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search or type a website" enterkeyhint="go">
     <button id="reload" aria-label="Reload">⟳</button>
   </div>
 
   <div class="screen" id="screen">
     <img id="view" alt="">
     <div class="wait" id="wait">Connecting…</div>
-  </div>
+    <button class="kbbtn" id="kbbtn">⌨ Type</button>
 
-  <div class="ai" id="ai">
+    <button class="fab" id="fab" aria-label="Ask the AI"><span class="spin"></span><span>AI</span><span class="st" id="fabst"></span></button>
+
+    <div class="sheet" id="sheet">
+      <div class="grab"></div>
+      <div class="head"><span>Ask the AI</span><span><button id="book" aria-label="Saved info" title="Saved info">📒</button><button id="spk" aria-label="Voice replies on or off" title="Voice replies">🔊</button><button id="close" aria-label="Close">✕</button></span></div>
+      <div class="say" id="say"></div>
+      <div class="status"><span class="dot"></span><span id="status">Thinking…</span></div>
+      <div class="chips">
+        <button class="chip" data-q="Explain this page to me in simple words.">Explain this page</button>
+        <button class="chip" data-q="Summarise this page in 3 short points.">Summarise</button>
+        <button class="chip" data-q="Help me fill in this form. Ask me for anything you need.">Fill this form</button>
+        <button class="chip" data-q="Open Gmail and tell me which new emails look important.">My emails</button>
+        <button class="chip" data-q="What should I do next on this page?">What next?</button>
+        <button class="chip" data-q="Save the important details on this page to my saved info, with a clear name.">Save this page</button>
+        <button class="chip" data-q="Fill this form using my saved info. Ask me only for what is missing.">Fill with my info</button>
+      </div>
+      <div class="heard" id="heard"></div>
+      <form class="row" id="chat">
+        <button type="button" class="mic" id="mic" aria-label="Speak">🎤</button>
+        <input id="ask_ai" placeholder="Ask me to do something…" autocomplete="off" enterkeyhint="send">
+        <button class="send" id="send">Go</button>
+      </form>
+    </div>
+
+    <div class="notes" id="notes">
+      <header><span>Saved info</span><button id="notesClose" aria-label="Close">✕</button></header>
+      <div class="items" id="noteItems"></div>
+    </div>
+
+    <button class="hush" id="hush"><i></i>Stop talking</button>
+
+    <div class="pick" id="pick"><div class="list" id="picklist"></div></div>
+
     <div class="ask" id="ask">
       <p id="askText"></p>
       <div><button class="no" id="no">No</button><button class="yes" id="yes">Yes, go ahead</button></div>
     </div>
-    <div class="say" id="say"></div>
-    <div class="status"><span class="dot"></span><span id="status">Thinking…</span></div>
-    <div class="chips">
-      <button class="chip" data-q="Explain this page to me in simple words.">Explain this page</button>
-      <button class="chip" data-q="Summarise this page in 3 short points.">Summarise</button>
-      <button class="chip" data-q="Help me fill in this form. Ask me for anything you need.">Fill this form</button>
-      <button class="chip" data-q="Open Gmail and tell me which new emails look important.">My emails</button>
-      <button class="chip" data-q="What should I do next on this page?">What next?</button>
-    </div>
-    <form class="row typing" id="typing">
-      <input id="typeText" placeholder="Type into the page…" autocomplete="off">
-      <button class="kb" type="button" id="enter" aria-label="Enter">↵</button>
-      <button class="kb" type="button" id="bksp" aria-label="Delete">⌫</button>
-    </form>
-    <form class="row" id="chat">
-      <button class="kb" type="button" id="kb" aria-label="Type into the page">⌨</button>
-      <input id="ask_ai" placeholder="Ask me to do something…" autocomplete="off" enterkeyhint="send">
-      <button class="send" id="send">Go</button>
-    </form>
   </div>
+  <textarea id="kb" autocomplete="off" autocapitalize="sentences" spellcheck="false" aria-hidden="true"></textarea>
 
 <script>
 const $ = (id) => document.getElementById(id);
 const key = new URLSearchParams(location.search).get("k");
-let ws, vw = 412, vh = 780, busy = false, askId = null;
+const body = document.body, screen = $("screen"), img = $("view"), kb = $("kb");
+let ws, vw = 412, vh = 780, busy = false, askId = null, fields = [];
 
+// ---------- connection
 function connect() {
-  ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws?k=${encodeURIComponent(key)}`);
+  ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws${key ? `?k=${encodeURIComponent(key)}` : ""}`);
+  ws.onopen = () => sendSize(true);
   ws.onmessage = (e) => {
     const m = JSON.parse(e.data);
-    if (m.t === "frame") { $("view").src = "data:image/jpeg;base64," + m.data; $("wait").style.display = "none"; }
+    if (m.t === "frame") { img.src = "data:image/jpeg;base64," + m.data; $("wait").style.display = "none"; }
     else if (m.t === "hello") { vw = m.w; vh = m.h; setUrl(m.url); setBusy(m.busy); }
+    else if (m.t === "vp") { vw = m.w; vh = m.h; }
     else if (m.t === "url") setUrl(m.url);
-    else if (m.t === "status") $("status").textContent = m.text;
-    else if (m.t === "note") $("say").textContent = m.text;
-    else if (m.t === "ai") $("say").textContent = m.text;
+    else if (m.t === "kbd") onKbd(m.on, m.kind);
+    else if (m.t === "fields") fields = m.list;
+    else if (m.t === "notes") showNotes(m.list);
+    else if (m.t === "select") showPick(m.options, m.selected);
+    else if (m.t === "status") { $("status").textContent = m.text; $("fabst").textContent = m.text; }
+    else if (m.t === "note" || m.t === "ai") { $("say").textContent = m.text; if (m.t === "ai") { body.classList.add("open"); speak(m.text); } }
     else if (m.t === "busy") setBusy(m.on);
-    else if (m.t === "ask") { askId = m.id; $("askText").textContent = m.text; $("ask").classList.add("on"); navigator.vibrate?.(80); }
+    else if (m.t === "ask") { askId = m.id; $("askText").textContent = m.text; $("ask").classList.add("on"); navigator.vibrate?.(80); speak(m.text); }
     else if (m.t === "ask-clear" && m.id === askId) closeAsk();
   };
   ws.onclose = () => { $("wait").style.display = "grid"; $("wait").textContent = "Reconnecting…"; setTimeout(connect, 1500); };
 }
 const out = (m) => ws?.readyState === 1 && ws.send(JSON.stringify(m));
 
+// tell the PC browser our exact screen size so the page fits like a real browser
+let lastSize = "";
+function sendSize(force) {
+  const w = Math.round(screen.clientWidth), h = Math.round(screen.clientHeight);
+  const dpr = 2;
+  const s = `${w}x${h}@${dpr}`;
+  if (!force && s === lastSize) return;
+  lastSize = s; out({ t: "size", w, h, dpr });
+}
+let sizeTimer;
+new ResizeObserver(() => { clearTimeout(sizeTimer); sizeTimer = setTimeout(() => sendSize(false), 250); }).observe(screen);
+
 function setUrl(u) { if (document.activeElement !== $("addr")) $("addr").value = u === "about:blank" ? "" : u; }
-function setBusy(on) { busy = on; $("ai").classList.toggle("busy", on); $("send").textContent = on ? "Stop" : "Go"; }
+function setBusy(on) { busy = on; body.classList.toggle("busy", on); $("send").textContent = on ? "Stop" : "Go"; }
 function closeAsk() { askId = null; $("ask").classList.remove("on"); }
 
-// address bar
+// ---------- address bar
 $("addr").addEventListener("keydown", (e) => { if (e.key === "Enter") { out({ t: "go", url: $("addr").value }); $("addr").blur(); } });
 $("addr").addEventListener("focus", () => $("addr").select());
 $("back").onclick = () => out({ t: "back" });
 $("reload").onclick = () => out({ t: "reload" });
 
-// tap and swipe on the screen
-const img = $("view");
-let start = null, lastY = 0;
+// ---------- touch: tap, swipe-to-scroll with a glide, like a phone
 function toPage(cx, cy) {
   const r = img.getBoundingClientRect();
   return { x: Math.round((cx - r.left) / r.width * vw), y: Math.round((cy - r.top) / r.height * vh) };
 }
-img.addEventListener("pointerdown", (e) => { start = { x: e.clientX, y: e.clientY, moved: false }; lastY = e.clientY; img.setPointerCapture(e.pointerId); });
+let start = null, lastY = 0, lastT = 0, vel = 0, pending = 0, glide = 0;
+function flushScroll() { if (Math.abs(pending) >= 1) { out({ t: "scroll", dy: Math.round(pending) }); pending = 0; } }
+setInterval(flushScroll, 33);
+img.addEventListener("pointerdown", (e) => {
+  cancelAnimationFrame(glide);
+  start = { x: e.clientX, y: e.clientY, moved: false }; lastY = e.clientY; lastT = performance.now(); vel = 0;
+  img.setPointerCapture(e.pointerId);
+});
 img.addEventListener("pointermove", (e) => {
   if (!start) return;
   if (Math.abs(e.clientY - start.y) > 8 || Math.abs(e.clientX - start.x) > 8) start.moved = true;
-  if (start.moved) {
-    const r = img.getBoundingClientRect();
-    const dy = (lastY - e.clientY) / r.height * vh;
-    if (Math.abs(dy) > 4) { out({ t: "scroll", dy: Math.round(dy * 1.5) }); lastY = e.clientY; }
-  }
+  if (!start.moved) return;
+  const r = img.getBoundingClientRect();
+  const dy = (lastY - e.clientY) / r.height * vh;
+  const now = performance.now();
+  vel = 0.8 * (dy / Math.max(now - lastT, 1)) + 0.2 * vel;
+  pending += dy; lastY = e.clientY; lastT = now;
 });
-img.addEventListener("pointerup", (e) => { if (start && !start.moved) out({ t: "tap", ...toPage(e.clientX, e.clientY) }); start = null; });
+img.addEventListener("pointerup", (e) => {
+  if (!start) return;
+  if (!start.moved) {
+    const p = toPage(e.clientX, e.clientY);
+    // open the phone keyboard right now, inside the tap, or the phone refuses
+    const hit = fields.find(([x, y, w, h]) => p.x >= x - 4 && p.x <= x + w + 4 && p.y >= y - 4 && p.y <= y + h + 4);
+    if (hit && hit[4] !== "select") openKb(hit[4]);
+    else if (document.activeElement === kb) { kbOpen = false; kb.blur(); }
+    out({ t: "tap", ...p });
+    body.classList.remove("open");
+  } else if (Math.abs(vel) > 0.3) {
+    let v = vel * 16; // px per frame
+    const step = () => { pending += v; v *= 0.94; if (Math.abs(v) > 0.5) glide = requestAnimationFrame(step); };
+    glide = requestAnimationFrame(step);
+  }
+  start = null;
+});
 img.addEventListener("pointercancel", () => (start = null));
-$("screen").addEventListener("wheel", (e) => { e.preventDefault(); out({ t: "scroll", dy: Math.round(e.deltaY) }); }, { passive: false });
+screen.addEventListener("wheel", (e) => { if (e.target === img) { e.preventDefault(); pending += e.deltaY; } }, { passive: false });
+img.addEventListener("contextmenu", (e) => e.preventDefault());
 
-// typing into the page by hand
-$("kb").onclick = () => { $("typing").classList.toggle("on"); if ($("typing").classList.contains("on")) $("typeText").focus(); };
-$("typing").onsubmit = (e) => { e.preventDefault(); const v = $("typeText").value; if (v) out({ t: "type", text: v }); $("typeText").value = ""; };
-$("enter").onclick = () => { const v = $("typeText").value; if (v) out({ t: "type", text: v }); $("typeText").value = ""; out({ t: "key", key: "Enter" }); };
-$("bksp").onclick = () => out({ t: "key", key: "Backspace" });
+// ---------- phone keyboard types straight into the page
+let kbOpen = false, kbPrev = "";
+const modeFor = (kind) => kind === "email" ? "email" : kind === "tel" ? "tel" : kind === "number" ? "decimal" : kind === "url" ? "url" : kind === "search" ? "search" : "text";
+function openKb(kind) {
+  kbOpen = true;
+  kb.value = ""; kbPrev = "";
+  kb.inputMode = modeFor(kind);
+  kb.autocapitalize = ["email", "url", "password"].includes(kind) ? "off" : "sentences";
+  kb.focus({ preventScroll: true });
+  $("kbbtn").classList.remove("on");
+}
+// the PC confirms after the tap: if it was a text box we missed, offer the Type button
+function onKbd(on, kind) {
+  if (on) {
+    if (document.activeElement !== kb) {
+      kbOpen = true; kb.value = ""; kbPrev = ""; kb.inputMode = modeFor(kind);
+      kb.focus({ preventScroll: true }); // works on a computer; a phone needs the button
+      setTimeout(() => $("kbbtn").classList.toggle("on", document.activeElement !== kb), 200);
+    }
+  } else {
+    kbOpen = false;
+    $("kbbtn").classList.remove("on");
+    if (document.activeElement === kb) kb.blur();
+  }
+}
+// dropdowns: show the page's choices as a list
+function showPick(options, selected) {
+  const list = $("picklist");
+  list.textContent = "";
+  for (const o of options) {
+    const b = document.createElement("button");
+    b.textContent = o.label || "—";
+    b.disabled = o.disabled;
+    if (o.i === selected) b.className = "sel";
+    b.onclick = () => { out({ t: "pick", i: o.i }); $("pick").classList.remove("on"); };
+    list.appendChild(b);
+  }
+  $("pick").classList.add("on");
+  list.querySelector(".sel")?.scrollIntoView({ block: "center" });
+}
+$("pick").onclick = (e) => { if (e.target === $("pick")) { $("pick").classList.remove("on"); out({ t: "key", key: "Escape" }); } };
+// on a computer: typing anywhere on the page goes into the page
+document.addEventListener("keydown", (e) => {
+  const a = document.activeElement;
+  if (a === kb || a === $("addr") || a === $("ask_ai") || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key.length === 1) { e.preventDefault(); out({ t: "text", text: e.key }); }
+  else if (["Enter", "Backspace", "Delete", "Tab", "Escape", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) { e.preventDefault(); out({ t: "key", key: e.key }); }
+});
+$("kbbtn").onclick = () => { kb.focus({ preventScroll: true }); $("kbbtn").classList.remove("on"); };
+kb.addEventListener("input", () => {
+  // send only what changed, so autocorrect and swipe-typing work too
+  const now = kb.value;
+  let i = 0;
+  while (i < kbPrev.length && i < now.length && kbPrev[i] === now[i]) i++;
+  for (let n = kbPrev.length - i; n > 0; n--) out({ t: "key", key: "Backspace" });
+  const added = now.slice(i);
+  if (added) out({ t: "text", text: added.replace(/\n/g, "") });
+  if (added.includes("\n")) out({ t: "key", key: "Enter" });
+  kbPrev = now.replace(/\n/g, "");
+  if (now.includes("\n")) { kb.value = kbPrev; }
+  if (kbPrev.length > 200) { kb.value = ""; kbPrev = ""; }
+});
+kb.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); out({ t: "key", key: "Enter" }); kb.value = ""; kbPrev = ""; }
+  else if (e.key === "Backspace" && kb.value === "") out({ t: "key", key: "Backspace" });
+  else if (["Tab", "Escape", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "Delete"].includes(e.key)) { e.preventDefault(); out({ t: "key", key: e.key }); if (e.key === "Tab") { kb.value = ""; kbPrev = ""; } }
+});
+kb.addEventListener("blur", () => { if (kbOpen) $("kbbtn").classList.add("on"); });
 
-// the AI
-function ask(text) { if (!text.trim()) return; $("say").textContent = ""; $("status").textContent = "Thinking…"; setBusy(true); out({ t: "chat", text }); }
+// ---------- the AI
+$("fab").onclick = () => { body.classList.add("open"); };
+$("close").onclick = () => body.classList.remove("open");
+function ask(text) { if (!text.trim()) return; $("say").textContent = ""; $("status").textContent = "Thinking…"; $("fabst").textContent = "Thinking…"; setBusy(true); out({ t: "chat", text }); }
 $("chat").onsubmit = (e) => {
   e.preventDefault();
   if (busy) { out({ t: "stop" }); return; }
   ask($("ask_ai").value); $("ask_ai").value = ""; $("ask_ai").blur();
+  body.classList.remove("open"); // close the panel so you can watch it work
 };
-document.querySelectorAll(".chip").forEach((c) => (c.onclick = () => ask(c.dataset.q)));
+document.querySelectorAll(".chip").forEach((c) => (c.onclick = () => { ask(c.dataset.q); body.classList.remove("open"); }));
 $("yes").onclick = () => { out({ t: "answer", id: askId, ok: true }); closeAsk(); };
 $("no").onclick = () => { out({ t: "answer", id: askId, ok: false }); closeAsk(); };
+
+
+// ---------- voice (free: the phone's own speech engine, no key, no server)
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const tts = window.speechSynthesis;
+let voiceOn = localStorage.getItem("pa_voice") !== "off";
+let talking = false, talkQueue = [], hearing = null, stopEar = null, nowSaying = "", lastSaid = "";
+// is this just the microphone hearing the phone's own voice? (e.g. "the next stop is Katpadi")
+function isEcho(heard) {
+  const w = heard.toLowerCase().split(/\W+/).filter(Boolean);
+  if (w.length <= 2) return false; // a short "stop" / "ok stop" is the person
+  const mine = new Set(nowSaying.split(/\W+/));
+  return w.filter((x) => mine.has(x)).length / w.length >= 0.5;
+}
+const STOP_WORDS = /\b(stop|stop it|stop talking|wait|enough|quiet|shut up|pause|ok stop|okay stop|be quiet)\b/i;
+function setSpk() { $("spk").textContent = voiceOn ? "🔊" : "🔇"; }
+setSpk();
+if (!SR) $("mic").hidden = true;
+
+function pickVoice() {
+  const vs = tts?.getVoices() || [];
+  return vs.find((v) => /en[-_]IN/i.test(v.lang)) || vs.find((v) => /^en/i.test(v.lang) && /female|samantha|google/i.test(v.name)) || vs.find((v) => /^en/i.test(v.lang)) || null;
+}
+// speak sentence by sentence, so "stop" cuts it off at once
+function speak(text) {
+  if (!voiceOn || !tts || !text) return;
+  shutUp(false);
+  talkQueue = String(text).replace(/https?:\/\/\S+/g, "the link").replace(/[*_#`>]/g, "").match(/[^.!?\n]+[.!?]*/g)?.map((x) => x.trim()).filter(Boolean) || [];
+  if (!talkQueue.length) return;
+  talking = true;
+  $("hush").classList.add("on");
+  nextLine();
+  listenForStop();
+}
+function nextLine() {
+  if (!talking) return;
+  const line = talkQueue.shift();
+  if (!line) { endTalk(); return; }
+  nowSaying = (lastSaid + " " + line).toLowerCase(); // this sentence and the one before (the mic lags a little)
+  lastSaid = line;
+  const u = new SpeechSynthesisUtterance(line);
+  const v = pickVoice(); if (v) { u.voice = v; u.lang = v.lang; } else u.lang = "en-IN";
+  u.rate = 1.05;
+  u.onend = () => nextLine();
+  u.onerror = () => nextLine();
+  tts.speak(u);
+}
+function endTalk() {
+  talking = false; talkQueue = [];
+  $("hush").classList.remove("on");
+  if (stopEar) { try { stopEar.abort(); } catch {} stopEar = null; }
+}
+// stop talking now; also stop the AI's work if it is still busy
+function shutUp(alsoStopWork) {
+  talkQueue = [];
+  tts?.cancel();
+  endTalk();
+  if (alsoStopWork && busy) out({ t: "stop" });
+}
+$("hush").onclick = () => shutUp(true);
+
+// while it talks, keep an ear open for "stop"
+function listenForStop() {
+  if (!SR || stopEar || hearing) return;
+  const r = new SR();
+  r.lang = "en-IN"; r.continuous = true; r.interimResults = true;
+  r.onresult = (e) => {
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const heard = e.results[i][0].transcript;
+      if (STOP_WORDS.test(heard) && !isEcho(heard)) { shutUp(true); navigator.vibrate?.(40); return; }
+    }
+  };
+  r.onend = () => { stopEar = null; if (talking) setTimeout(listenForStop, 150); };
+  r.onerror = () => {};
+  stopEar = r;
+  try { r.start(); } catch { stopEar = null; }
+}
+
+// tap the mic, say what you want; it sends when you stop speaking
+function unlockSpeech() { if (tts && !unlockSpeech.done) { tts.speak(new SpeechSynthesisUtterance("")); unlockSpeech.done = true; } }
+$("mic").onclick = () => {
+  unlockSpeech();
+  if (hearing) { hearing.stop(); return; }
+  shutUp(false);
+  const r = new SR();
+  r.lang = "en-IN"; r.interimResults = true; r.continuous = false;
+  let said = "";
+  r.onresult = (e) => {
+    said = [...e.results].map((x) => x[0].transcript).join(" ").trim();
+    $("heard").textContent = said;
+  };
+  r.onend = () => {
+    hearing = null; $("mic").classList.remove("on");
+    $("heard").textContent = "";
+    if (!said) return;
+    if (STOP_WORDS.test(said) && said.split(/\s+/).length <= 3) { shutUp(true); return; }
+    // answering a Yes / No question by voice
+    if (askId && /^(yes|yeah|yep|ok|okay|go ahead|sure|do it)\b/i.test(said)) { $("yes").click(); return; }
+    if (askId && /^(no|nope|don't|do not|cancel)\b/i.test(said)) { $("no").click(); return; }
+    if (busy) return;
+    ask(said); body.classList.remove("open");
+  };
+  r.onerror = (e) => { if (e.error === "not-allowed") $("say").textContent = "Allow the microphone for this site to talk to me."; };
+  hearing = r;
+  $("mic").classList.add("on");
+  try { r.start(); } catch { hearing = null; $("mic").classList.remove("on"); }
+};
+$("spk").onclick = () => { voiceOn = !voiceOn; localStorage.setItem("pa_voice", voiceOn ? "on" : "off"); setSpk(); if (!voiceOn) shutUp(false); else unlockSpeech(); };
+$("fab").addEventListener("click", unlockSpeech);
+tts?.getVoices();
+
+// ---------- saved info: see it and delete it
+function showNotes(list) {
+  const box = $("noteItems");
+  box.textContent = "";
+  if (!list.length) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = 'Nothing saved yet. Say or type things like "Save my home address: 12 Gandhi Street, Chennai" and I will remember them. Passwords and card numbers are never saved.';
+    box.appendChild(p);
+    return;
+  }
+  for (const x of list) {
+    const row = document.createElement("div"); row.className = "it";
+    const d = document.createElement("div");
+    const b = document.createElement("b"); b.textContent = x.label;
+    const t = document.createElement("span"); t.textContent = x.text;
+    d.append(b, t);
+    const del = document.createElement("button"); del.textContent = "Delete";
+    del.onclick = () => out({ t: "forget", label: x.label });
+    row.append(d, del); box.appendChild(row);
+  }
+}
+$("book").onclick = () => $("notes").classList.add("on");
+$("notesClose").onclick = () => $("notes").classList.remove("on");
 
 connect();
 </script>
