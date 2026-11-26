@@ -1,0 +1,18 @@
+# Hanubees
+
+> Hanubees is a free Android app: a web browser with an AI agent inside. People say what they need in plain words (typing or speaking) and the AI uses websites for them: it reads the page, taps buttons, types, scrolls and fills forms, then reports the result. It asks Yes or No before anything that sends, pays, buys, books, posts or deletes, and never types passwords, OTPs, PINs or card numbers.
+
+Key facts:
+- Price: free. The AI is Google Gemini, used with the person's own free Gemini API key (from aistudio.google.com); the app walks them through getting it.
+- Platform: Android 8.0 or newer. About 1 MB. No iPhone version yet.
+- Download: https://hanubees.com/download (direct APK, installed from the file).
+- Made for everyday people who are not technical; built in India.
+- Can: compare prices, look up train/bus/flight times, fill long forms using details the person saved, explain a page simply, find information on a site, play turn-based web games (2048, tic-tac-toe) while the person watches, read answers out loud.
+- Limits: "Sign in with Google" buttons do not work inside the app (Google blocks them in in-app browsers); it is too slow for fast action games; it will not handle passwords or payments details.
+- Privacy: saved details and the Gemini key stay on the phone; usage (including what people ask the AI and approximate city) is recorded to improve the app and never sold.
+- Support: in-app "Talk to us" chat with the team.
+
+## Pages
+- [Home and download](https://hanubees.com/): what it does, how it works, FAQ
+- [Privacy](https://hanubees.com/privacy): what stays on the phone, what is sent, what is recorded
+- [Download the Android app](https://hanubees.com/download)

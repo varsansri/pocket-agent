@@ -3,17 +3,91 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pocket Agent: an AI that uses websites for you</title>
-<meta name="description" content="Pocket Agent is a phone browser with an AI inside. Tell it what you need in plain words and it reads, taps and fills websites for you, and always asks before anything important.">
+<title>Hanubees: free AI agent app for Android that uses websites for you</title>
+<meta name="description" content="Hanubees is a free Android app with an AI inside a browser. Say what you need in plain words and it reads pages, taps, types and fills forms for you, and asks before anything important.">
 <link rel="canonical" href="https://hanubees.com/">
 <meta name="theme-color" content="#ffffff">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon-512.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Hanubees">
+<meta property="og:title" content="Hanubees: an AI that uses websites for you">
+<meta property="og:description" content="Free Android app. Tell it what you need. It reads, taps and fills websites for you, and always asks before anything important.">
+<meta property="og:url" content="https://hanubees.com/">
+<meta property="og:image" content="https://hanubees.com/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Hanubees: an AI that uses websites for you">
+<meta name="twitter:description" content="Free Android app. Tell it what you need. It reads, taps and fills websites for you.">
+<meta name="twitter:image" content="https://hanubees.com/og.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://hanubees.com/#org",
+      "name": "Hanubees",
+      "url": "https://hanubees.com/",
+      "logo": "https://hanubees.com/icon-512.png"
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://hanubees.com/#site",
+      "name": "Hanubees",
+      "url": "https://hanubees.com/",
+      "publisher": { "@id": "https://hanubees.com/#org" }
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://hanubees.com/#app",
+      "name": "Hanubees",
+      "description": "A free Android app with an AI agent inside a web browser. You say what you need in plain words; the AI reads web pages, taps, types, scrolls and fills forms for you, asks Yes or No before anything that sends, pays, books or deletes, and never types passwords or OTPs.",
+      "applicationCategory": "UtilitiesApplication",
+      "operatingSystem": "Android 8.0 or newer",
+      "downloadUrl": "https://hanubees.com/download",
+      "installUrl": "https://hanubees.com/download",
+      "fileSize": "1MB",
+      "softwareVersion": "1.2",
+      "isAccessibleForFree": true,
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "INR" },
+      "publisher": { "@id": "https://hanubees.com/#org" },
+      "featureList": [
+        "Do tasks on any website by typing or speaking",
+        "Asks Yes or No before sending, paying, booking or deleting",
+        "Never types passwords, OTPs, PINs or card numbers",
+        "Remembers details you ask it to save, on your phone only",
+        "Reads answers out loud",
+        "Plays turn-based web games like 2048 and tic-tac-toe",
+        "Message the team from inside the app"
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        { "@type": "Question", "name": "What is Hanubees?", "acceptedAnswer": { "@type": "Answer", "text": "Hanubees is a free Android app: a web browser with an AI agent inside. You tell it what you need in plain words, by typing or speaking, and it uses websites for you: it reads the page, taps buttons, types, scrolls and fills forms, then tells you the result." } },
+        { "@type": "Question", "name": "Is Hanubees free?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. The app is free. It uses Google's Gemini AI through your own free Gemini key, which you get in about a minute at aistudio.google.com; the app shows you how." } },
+        { "@type": "Question", "name": "Which phones does it work on?", "acceptedAnswer": { "@type": "Answer", "text": "Android phones with Android 8.0 or newer. It is a small download of about 1 MB from hanubees.com/download. There is no iPhone version yet." } },
+        { "@type": "Question", "name": "Is it safe? Can it pay or send things without me?", "acceptedAnswer": { "@type": "Answer", "text": "Before anything that sends, pays, buys, books, posts or deletes, Hanubees stops and asks you Yes or No on the screen. It never types passwords, OTPs, PINs or card numbers; you type those yourself." } },
+        { "@type": "Question", "name": "What can I ask it to do?", "acceptedAnswer": { "@type": "Answer", "text": "Anything you would do on a website: search and compare prices, look up train or flight times, fill in a long form with your saved details, summarise a page, find information, or play a turn-based web game like 2048 while you watch." } },
+        { "@type": "Question", "name": "Does it work with Google sign-in?", "acceptedAnswer": { "@type": "Answer", "text": "Not yet. Google blocks its 'Sign in with Google' button inside apps like this, so use a site's email or phone-number login instead." } },
+        { "@type": "Question", "name": "What happens to my data?", "acceptedAnswer": { "@type": "Answer", "text": "Details you ask it to remember and your Gemini key stay on your phone. Your requests go to Google Gemini to be answered. To improve the app we record how it is used, including what you ask the AI and your approximate city, and we never sell it. See hanubees.com/privacy." } }
+      ]
+    }
+  ]
+}
+</script>
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font: 18px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #1a1a1a; background: #f6f6f3; }
-  main { max-width: 640px; margin: 0 auto; padding: 56px 22px 64px; }
+  main { max-width: 680px; margin: 0 auto; padding: 56px 22px 64px; }
   .tag { display: inline-block; font-size: 14px; font-weight: 600; color: #1d4fc4; background: #eef2fd; padding: 4px 12px; border-radius: 999px; }
   h1 { font-size: clamp(34px, 8vw, 48px); line-height: 1.08; letter-spacing: -0.02em; margin: 18px 0 14px; text-wrap: balance; }
-  .lead { font-size: 20px; color: #444; margin: 0 0 36px; text-wrap: pretty; }
+  .lead { font-size: 20px; color: #444; margin: 0 0 28px; text-wrap: pretty; }
+  .get { display: block; text-align: center; margin: 0 0 12px; padding: 16px; border-radius: 16px; background: #2f6fed; color: #fff; font-weight: 700; font-size: 19px; text-decoration: none; }
+  .get small { display: block; font-weight: 500; font-size: 14px; opacity: .85; margin-top: 2px; }
+  .how { font-size: 15px; color: #666; margin: 0 0 36px; }
   .phone { background: #fff; border: 1px solid #e4e4e0; border-radius: 22px; padding: 18px; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 12px 32px rgba(0,0,0,.06); }
   .you { background: #2f6fed; color: #fff; padding: 10px 14px; border-radius: 16px 16px 4px 16px; margin: 0 0 10px auto; max-width: 85%; width: fit-content; }
   .ai { background: #f1f1ee; padding: 10px 14px; border-radius: 16px 16px 16px 4px; max-width: 90%; width: fit-content; margin-bottom: 10px; }
@@ -21,30 +95,50 @@
   .ask div { display: flex; gap: 8px; margin-top: 8px; }
   .ask span { flex: 1; text-align: center; padding: 8px; border-radius: 10px; font-weight: 600; font-size: 16px; }
   .no { background: #ececea; } .yes { background: #1f8a4c; color: #fff; }
-  h2 { font-size: 22px; margin: 48px 0 12px; }
-  ul { padding-left: 20px; margin: 0; } li { margin: 6px 0; }
-  .get { display: block; text-align: center; margin: 0 0 12px; padding: 16px; border-radius: 16px; background: #2f6fed; color: #fff; font-weight: 700; font-size: 19px; text-decoration: none; }
-  .get small { display: block; font-weight: 500; font-size: 14px; opacity: .85; margin-top: 2px; }
-  .how { font-size: 15px; color: #666; margin: 0 0 36px; }
-  footer { margin-top: 56px; font-size: 15px; color: #777; }
+  h2 { font-size: 24px; margin: 52px 0 12px; letter-spacing: -0.01em; }
+  h3 { font-size: 18px; margin: 22px 0 4px; }
+  p { margin: 0 0 12px; }
+  ol, ul { padding-left: 22px; margin: 0; } li { margin: 8px 0; }
+  .faq h3 { margin-top: 24px; }
+  .faq p { color: #3a3a3a; }
+  a { color: #1d4fc4; }
+  footer { margin-top: 56px; font-size: 15px; color: #5c5c5c; }
+  footer a { color: #5c5c5c; }
 </style>
 </head>
 <body>
 <main>
   <span class="tag">Free · Android</span>
   <h1>An AI that uses websites for you, right on your phone.</h1>
-  <p class="lead">Tell Pocket Agent what you need in plain words. It reads the page, taps, types and fills forms, and it always asks you before anything important.</p>
+  <p class="lead">Hanubees is a free Android app with an AI inside the browser. Tell it what you need in plain words. It reads the page, taps, types and fills forms, and it always asks you before anything important.</p>
 
-  <a class="get" href="/download">Download for Android<small>Free · about 1 MB</small></a>
+  <a class="get" href="/download">Download for Android<small>Free · about 1 MB · Android 8.0 or newer</small></a>
   <p class="how">After it downloads, tap the file and allow installing. iPhone is not ready yet.</p>
 
   <div class="phone" aria-label="Example conversation">
-    <div class="you">Find my electricity bill in my email and tell me when it's due.</div>
-    <div class="ai">Found it. Your bill is ₹1,240 and it's due on 30 November.</div>
-    <div class="ask">Open the payment page?
+    <div class="you">Find the cheapest train from Chennai to Coimbatore this Friday.</div>
+    <div class="ai">The cheapest is the Cheran Express in sleeper class. Want me to open the booking page?</div>
+    <div class="ask">Open the booking page?
       <div><span class="no">No</span><span class="yes">Yes, go ahead</span></div>
     </div>
   </div>
+
+  <h2>How it works</h2>
+  <ol>
+    <li><b>Say what you want.</b> Type it, or tap the microphone and speak.</li>
+    <li><b>Watch it work.</b> The AI opens websites, reads them, taps buttons and fills in boxes on your screen, step by step.</li>
+    <li><b>Say yes or no.</b> Before anything that sends, pays, books or deletes, it stops and asks you. Then it tells you the result, out loud if you like.</li>
+  </ol>
+
+  <h2>What you can ask it</h2>
+  <ul>
+    <li>Compare prices for something on a few shopping sites.</li>
+    <li>Look up train, bus or flight times.</li>
+    <li>Fill in a long form using details you asked it to remember.</li>
+    <li>Explain a confusing page in simple words.</li>
+    <li>Find an answer on a website so you don't have to scroll.</li>
+    <li>Play a turn-based web game like 2048 or tic-tac-toe while you watch.</li>
+  </ul>
 
   <h2>Made for people who just want it done</h2>
   <ul>
@@ -55,7 +149,21 @@
     <li>Stuck? Message us from inside the app and a real person replies.</li>
   </ul>
 
-  <footer>Pocket Agent by Hanubees.</footer>
+  <section class="faq">
+    <h2>Questions</h2>
+    <h3>Is Hanubees free?</h3>
+    <p>Yes. The app is free. It uses Google's Gemini AI through your own free Gemini key, which takes about a minute to get at aistudio.google.com. The app shows you how.</p>
+    <h3>Which phones does it work on?</h3>
+    <p>Android phones with Android 8.0 or newer. There is no iPhone version yet.</p>
+    <h3>Can it pay or send things without me?</h3>
+    <p>No. Before anything that sends, pays, buys, books, posts or deletes, it asks you Yes or No on the screen. It never types passwords, OTPs, PINs or card numbers. You type those yourself.</p>
+    <h3>Does "Sign in with Google" work inside it?</h3>
+    <p>Not yet. Google blocks that button inside apps like this, so use a site's email or phone-number login instead.</p>
+    <h3>What happens to my data?</h3>
+    <p>Details you ask it to remember, and your Gemini key, stay on your phone. Your requests go to Google Gemini to be answered. To make the app better we record how it is used, including what you ask the AI and your approximate city. We never sell it. Read the <a href="/privacy">privacy page</a>.</p>
+  </section>
+
+  <footer>Hanubees · <a href="/privacy">Privacy</a> · <a href="/download">Download</a></footer>
 </main>
 </body>
 </html>

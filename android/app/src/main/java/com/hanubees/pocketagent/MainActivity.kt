@@ -115,7 +115,7 @@ class MainActivity : Activity() {
             askLatch = latch
             speak(question)
             askDialog = AlertDialog.Builder(this)
-                .setTitle("Pocket Agent asks")
+                .setTitle("Hanubees asks")
                 .setMessage(question)
                 .setCancelable(false)
                 .setPositiveButton("Yes") { _, _ -> yes = true; latch.countDown() }
@@ -191,7 +191,7 @@ class MainActivity : Activity() {
             background = GradientDrawable().apply { setColor(Color.WHITE); setStroke(dp(1), Color.parseColor("#ececea")) }
         }
         header = TextView(this).apply {
-            text = "▾  Pocket Agent"
+            text = "▾  Hanubees"
             textSize = 13f
             setTextColor(grey)
             setTypeface(typeface, Typeface.BOLD)
@@ -200,7 +200,7 @@ class MainActivity : Activity() {
             setOnClickListener {
                 val show = logScroll.visibility != View.VISIBLE
                 logScroll.visibility = if (show) View.VISIBLE else View.GONE
-                text = if (show) "▾  Pocket Agent" else "▸  Pocket Agent (tap to show)"
+                text = if (show) "▾  Hanubees" else "▸  Hanubees (tap to show)"
             }
         }
         panel.addView(header)
@@ -456,7 +456,7 @@ class MainActivity : Activity() {
     internal fun showSettings(welcome: Boolean) {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
         box.addView(TextView(this).apply {
-            text = (if (welcome) "Welcome! Pocket Agent uses Google's Gemini AI. It is free: you need your own key.\n\n" else "") +
+            text = (if (welcome) "Welcome! Hanubees uses Google's Gemini AI. It is free: you need your own key.\n\n" else "") +
                 "1. Tap \"Get my free key\" and sign in with Google.\n2. Tap \"Create API key\" and copy it.\n3. Come back and paste it below."
             textSize = 15f; setTextColor(ink)
         })
@@ -482,7 +482,7 @@ class MainActivity : Activity() {
         }
         box.addView(modelBox)
         AlertDialog.Builder(this)
-            .setTitle(if (welcome) "Pocket Agent" else "Settings")
+            .setTitle(if (welcome) "Hanubees" else "Settings")
             .setView(box)
             .setPositiveButton("Save") { _, _ ->
                 val key = keyBox.text.toString().trim().filterNot { it.isWhitespace() }

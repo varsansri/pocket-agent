@@ -101,7 +101,7 @@ class Overlays(private val a: MainActivity, private val layer: FrameLayout, priv
             sub.text = when {
                 !signUp -> "Sign in to carry on."
                 reason != null -> reason
-                forced -> "You've tried Pocket Agent for 2 minutes. Make a free account to keep using it. It takes 20 seconds, and it lets you message us any time."
+                forced -> "You've tried Hanubees for 2 minutes. Make a free account to keep using it. It takes 20 seconds, and it lets you message us any time."
                 else -> "It takes 20 seconds."
             }
             name.visibility = if (signUp) View.VISIBLE else View.GONE
@@ -144,7 +144,7 @@ class Overlays(private val a: MainActivity, private val layer: FrameLayout, priv
                 }
             }
         }
-        box.addView(text("✦ Pocket Agent", 15f, a.blue, bold = true))
+        box.addView(text("✦ Hanubees", 15f, a.blue, bold = true))
         box.addView(title, lp(18))
         box.addView(sub, lp(8))
         box.addView(name, lp(22)); box.addView(email, lp(10)); box.addView(pass, lp(10)); box.addView(mobile, lp(10))
@@ -175,7 +175,7 @@ class Overlays(private val a: MainActivity, private val layer: FrameLayout, priv
         head.addView(text("←", 24f).apply { setPadding(a.dp(14), a.dp(4), a.dp(14), a.dp(4)); setOnClickListener { closeChat() } })
         val headText = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
         headText.addView(text(title, 18f, bold = true))
-        headText.addView(text(if (iAmAdmin) "You are replying as Pocket Agent" else "We usually reply within a few hours", 12f, a.grey))
+        headText.addView(text(if (iAmAdmin) "You are replying as Hanubees" else "We usually reply within a few hours", 12f, a.grey))
         head.addView(headText)
         root.addView(head)
         root.addView(View(a).apply { setBackgroundColor(Color.parseColor("#ececea")) }, LinearLayout.LayoutParams(-1, a.dp(1)))
@@ -183,7 +183,7 @@ class Overlays(private val a: MainActivity, private val layer: FrameLayout, priv
         val list = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(a.dp(12), a.dp(8), a.dp(12), a.dp(8)) }
         val scroll = ScrollView(a).apply { addView(list) }
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        if (!iAmAdmin) list.addView(bubble("Hi ${cloud.name.ifEmpty { "there" }}! Tell us anything: a problem, an idea, or what you'd like Pocket Agent to do. A real person reads every message.", false, null))
+        if (!iAmAdmin) list.addView(bubble("Hi ${cloud.name.ifEmpty { "there" }}! Tell us anything: a problem, an idea, or what you'd like Hanubees to do. A real person reads every message.", false, null))
 
         val row = LinearLayout(a).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(a.dp(10), a.dp(6), a.dp(10), a.dp(10)) }
         val input = EditText(a).apply {
@@ -343,7 +343,7 @@ class Overlays(private val a: MainActivity, private val layer: FrameLayout, priv
                 3 -> a.showNotes()
                 4 -> a.showSettings(false)
                 5 -> if (cloud.signedIn) {
-                    android.app.AlertDialog.Builder(a).setMessage("Sign out of Pocket Agent?")
+                    android.app.AlertDialog.Builder(a).setMessage("Sign out of Hanubees?")
                         .setPositiveButton("Sign out") { _, _ -> Track.event("signed_out"); Track.flush(); cloud.signOut(); a.signedInChanged() }
                         .setNegativeButton("Cancel", null).show()
                 } else showWall(false)

@@ -22,7 +22,7 @@
       "permanent": false
     },
     {
-      "source": "/:path((?!admin|api/|hb\\.js|download|096c2b2c0a8269e60c017beed2d55fec\\.txt|index).+)",
+      "source": "/:path((?!admin|api/|download|privacy|index|[^/]+\\.(?:txt|xml|svg|png|js|ico|json)$).+)",
       "has": [
         {
           "type": "host",
@@ -44,6 +44,15 @@
         {
           "key": "Cache-Control",
           "value": "no-store"
+        }
+      ]
+    },
+    {
+      "source": "/llms.txt",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/plain; charset=utf-8"
         }
       ]
     }
