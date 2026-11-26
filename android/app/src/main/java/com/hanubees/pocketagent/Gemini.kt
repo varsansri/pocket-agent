@@ -6,12 +6,37 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /** Plain HTTPS call to Google's Gemini API with the person's own free key. */
-class Gemini(private val key: String, private val model: String) {
-    class Failed(val userText: String, val detail: String = "") : Exception(userText)
+class Gemini(private val key: String, chosen: String) {
+    class Failed(val userText: String, val detail: String = "", val code: Int = 0) : Exception(userText)
 
     @Volatile private var conn: HttpURLConnection? = null
+    @Volatile private var cancelled = false
+
+    // Free models, best first. When one is busy (Google says "high demand") or its free
+    // limit is used up, move to the next one and stay there for this task.
+    private val chain = (listOf(chosen) + BACKUPS).distinct()
+    private var at = lastGood?.takeIf { System.currentTimeMillis() - lastGoodAt < 10 * 60_000 }
+        ?.let { chain.indexOf(it) }?.takeIf { it >= 0 } ?: 0
 
     fun generate(body: JSONObject): JSONObject {
+        var last: Failed? = null
+        while (at < chain.size) {
+            if (cancelled) throw Failed("Stopped.")
+            try {
+                val r = generateWith(chain[at], body)
+                lastGood = chain[at]; lastGoodAt = System.currentTimeMillis()
+                return r
+            } catch (e: Failed) {
+                last = e
+                val tryNext = e.code >= 500 || e.code == 429 || e.code == 404
+                if (!tryNext) throw e
+                at++
+            }
+        }
+        throw last ?: Failed("Something went wrong talking to Gemini. Try again.")
+    }
+
+    private fun generateWith(model: String, body: JSONObject): JSONObject {
         val c = URL("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
             .openConnection() as HttpURLConnection
         conn = c
@@ -19,7 +44,7 @@ class Gemini(private val key: String, private val model: String) {
             c.requestMethod = "POST"
             c.doOutput = true
             c.connectTimeout = 20_000
-            c.readTimeout = 120_000
+            c.readTimeout = 40_000 // a jammed model can hang for minutes; give up and use the next one
             c.setRequestProperty("Content-Type", "application/json")
             c.setRequestProperty("x-goog-api-key", key)
             c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
@@ -36,12 +61,17 @@ class Gemini(private val key: String, private val model: String) {
                     code == 404 -> "The AI model \"$model\" was not found. Change it in ⚙ Settings."
                     text.contains("API_KEY_INVALID") || text.contains("API key") || code == 401 || code == 403 ->
                         "The Gemini key looks wrong. Open ⚙ Settings and paste it again."
-                    code >= 500 -> "Gemini is busy right now. Try again in a minute."
+                    code >= 500 -> "All the free Gemini models are busy right now. Try again in a minute."
                     else -> "Gemini refused the request."
                 },
                 detail,
+                code,
             )
+        } catch (e: java.net.SocketTimeoutException) {
+            if (cancelled) throw Failed("Stopped.")
+            throw Failed("All the free Gemini models are busy right now. Try again in a minute.", "$model took too long to answer", 504)
         } catch (e: IOException) {
+            if (cancelled) throw Failed("Stopped.")
             throw Failed("I can't reach the internet. Check your connection and try again.", e.toString().take(300))
         } finally {
             conn = null
@@ -61,6 +91,13 @@ class Gemini(private val key: String, private val model: String) {
     }
 
     fun cancel() {
+        cancelled = true
         try { conn?.disconnect() } catch (_: Exception) {}
+    }
+
+    companion object {
+        val BACKUPS = listOf("gemini-flash-latest", "gemini-2.5-flash", "gemini-flash-lite-latest")
+        @Volatile private var lastGood: String? = null
+        @Volatile private var lastGoodAt = 0L
     }
 }
