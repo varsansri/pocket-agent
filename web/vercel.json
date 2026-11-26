@@ -1,5 +1,51 @@
 {
   "cleanUrls": true,
-  "redirects": [{ "source": "/", "destination": "/admin", "permanent": false }],
-  "headers": [{ "source": "/admin(.*)", "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }, { "key": "Cache-Control", "value": "no-store" }] }]
+  "rewrites": [
+    {
+      "source": "/hb.js",
+      "destination": "https://hanubees-commerce.vercel.app/hb.js"
+    },
+    {
+      "source": "/api/hb",
+      "destination": "https://hanubees-commerce.vercel.app/api/hb"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/download",
+      "destination": "https://github.com/varsansri/pocket-agent/releases/download/android-v1.0/PocketAgent.apk",
+      "permanent": false
+    },
+    {
+      "source": "/app",
+      "destination": "/",
+      "permanent": false
+    },
+    {
+      "source": "/:path((?!admin|api/|hb\\.js|download|096c2b2c0a8269e60c017beed2d55fec\\.txt|index).+)",
+      "has": [
+        {
+          "type": "host",
+          "value": "(www\\.)?hanubees\\.com"
+        }
+      ],
+      "destination": "https://ridkey.com/:path",
+      "permanent": true
+    }
+  ],
+  "headers": [
+    {
+      "source": "/admin(.*)",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
+    }
+  ]
 }
