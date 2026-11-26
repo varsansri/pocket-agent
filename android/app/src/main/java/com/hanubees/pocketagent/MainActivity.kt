@@ -31,6 +31,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
@@ -54,6 +55,12 @@ class MainActivity : Activity() {
     private lateinit var sendBtn: TextView
     private lateinit var micBtn: TextView
     private lateinit var header: TextView
+    private lateinit var menuBtn: TextView
+    private lateinit var cloud: Cloud
+    private lateinit var overlays: Overlays
+    private var unread = 0
+    private var wallDue = false
+    private var resumed = false
 
     @Volatile var pageLoading = false
     private var agent: Agent? = null
@@ -63,11 +70,11 @@ class MainActivity : Activity() {
     private var askDialog: AlertDialog? = null
     private var askLatch: CountDownLatch? = null
 
-    private val blue = Color.parseColor("#2f6fed")
-    private val ink = Color.parseColor("#1a1a1a")
-    private val grey = Color.parseColor("#6b6b6b")
-    private val paper = Color.parseColor("#f0f0ee")
-    private val red = Color.parseColor("#c0392b")
+    internal val blue = Color.parseColor("#2f6fed")
+    internal val ink = Color.parseColor("#1a1a1a")
+    internal val grey = Color.parseColor("#6b6b6b")
+    internal val paper = Color.parseColor("#f0f0ee")
+    internal val red = Color.parseColor("#c0392b")
 
     // ------------------------------------------------------------ helpers the Agent uses
     fun <T> ui(block: () -> T): T {
@@ -120,8 +127,8 @@ class MainActivity : Activity() {
     fun cancelAsk() = main.post { askDialog?.dismiss(); askLatch?.countDown() }
 
     // ------------------------------------------------------------ screen
-    private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
-    private fun round(color: Int, r: Int = 18) = GradientDrawable().apply { setColor(color); cornerRadius = dp(r).toFloat() }
+    fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
+    fun round(color: Int, r: Int = 18) = GradientDrawable().apply { setColor(color); cornerRadius = dp(r).toFloat() }
 
     private fun button(label: String, onClick: () -> Unit) = TextView(this).apply {
         text = label
@@ -137,6 +144,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         prefs = getSharedPreferences("pocket-agent", Context.MODE_PRIVATE)
         notes = Notes(prefs)
+        cloud = Cloud(prefs)
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.WHITE) }
 
@@ -161,8 +169,8 @@ class MainActivity : Activity() {
             }
         }
         bar.addView(address, LinearLayout.LayoutParams(0, dp(40), 1f))
-        bar.addView(button("📒") { showNotes() })
-        bar.addView(button("⚙") { showSettings(false) })
+        menuBtn = button("☰") { overlays.showMenu(menuBtn, unread) }.apply { textSize = 22f }
+        bar.addView(menuBtn)
         root.addView(bar)
 
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100; visibility = View.GONE }
@@ -223,17 +231,24 @@ class MainActivity : Activity() {
         panel.addView(row)
         root.addView(panel)
 
+        // everything sits in a frame so full-screen layers (wall, chat, inbox) can cover it
+        val frame = FrameLayout(this)
+        frame.addView(root, FrameLayout.LayoutParams(-1, -1))
+        val layer = FrameLayout(this).apply { visibility = View.GONE }
+        frame.addView(layer, FrameLayout.LayoutParams(-1, -1))
+        overlays = Overlays(this, layer, cloud)
+
         // keep clear of the status bar, nav bar and keyboard
         if (Build.VERSION.SDK_INT >= 30) {
-            root.setOnApplyWindowInsetsListener { v, insets ->
+            frame.setOnApplyWindowInsetsListener { v, insets ->
                 val s = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.ime())
                 v.setPadding(s.left, s.top, s.right, s.bottom)
                 WindowInsets.CONSUMED
             }
         } else {
-            root.fitsSystemWindows = true
+            frame.fitsSystemWindows = true
         }
-        setContentView(root)
+        setContentView(frame)
 
         if (Build.VERSION.SDK_INT >= 33) {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(0) { goBackOrLeave() }
@@ -365,6 +380,7 @@ class MainActivity : Activity() {
             main.post {
                 agent = null
                 setBusy(false)
+                if (wallDue) { wallDue = false; overlays.showWall(true) }
                 chat.add(text to answer)
                 bubble(answer, "ai")
                 if (detail.isNotEmpty() && answer != "Stopped.") bubble("Details: $detail", "note")
@@ -410,7 +426,7 @@ class MainActivity : Activity() {
     }
 
     // ------------------------------------------------------------ settings + saved info
-    private fun showSettings(welcome: Boolean) {
+    internal fun showSettings(welcome: Boolean) {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
         box.addView(TextView(this).apply {
             text = (if (welcome) "Welcome! Pocket Agent uses Google's Gemini AI. It is free: you need your own key.\n\n" else "") +
@@ -462,7 +478,7 @@ class MainActivity : Activity() {
             .show()
     }
 
-    private fun showNotes() {
+    internal fun showNotes() {
         val items = notes.list()
         val b = AlertDialog.Builder(this).setTitle("📒 Saved info")
         if (items.isEmpty()) {
@@ -497,6 +513,7 @@ class MainActivity : Activity() {
     }
 
     private fun goBackOrLeave() {
+        if (overlays.back()) return
         if (agent != null) return stopTask()
         if (web.canGoBack()) web.goBack() else finish()
     }
@@ -504,8 +521,59 @@ class MainActivity : Activity() {
     @Deprecated("Activity API")
     override fun onBackPressed() = goBackOrLeave()
 
+    // ------------------------------------------------------------ 2-minute free try, then an account (like fxabsolute.com)
+    private val freeMs = 2 * 60 * 1000L
+    private val tick = object : Runnable {
+        override fun run() {
+            if (!resumed) return
+            if (!cloud.signedIn && !overlays.wallUp) {
+                // time looking at the wall is not time using the app, so the clock only runs while it's down
+                val used = prefs.getLong("usedMs", 0) + 1000
+                prefs.edit().putLong("usedMs", used).apply()
+                if (used >= freeMs) {
+                    if (agent != null) wallDue = true // let the running task finish first
+                    else overlays.showWall(true)
+                }
+            }
+            main.postDelayed(this, 1000)
+        }
+    }
+    private val badgeTick = object : Runnable {
+        override fun run() { if (!resumed) return; refreshBadge(); main.postDelayed(this, 30_000) }
+    }
+
+    fun refreshBadge() {
+        if (!cloud.signedIn) { unread = 0; menuBtn.text = "☰"; menuBtn.setTextColor(ink); return }
+        Thread {
+            val n = cloud.unread()
+            main.post {
+                unread = n
+                menuBtn.text = if (n > 0) "☰ $n" else "☰"
+                menuBtn.setTextColor(if (n > 0) red else ink)
+            }
+        }.start()
+    }
+
+    fun signedInChanged() {
+        refreshBadge()
+        if (cloud.signedIn) {
+            Toast.makeText(this, "Signed in as ${cloud.name.ifEmpty { cloud.email }}", Toast.LENGTH_SHORT).show()
+            Thread { cloud.checkAdmin(); cloud.touch() }.start()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        resumed = true
+        main.removeCallbacks(tick); main.post(tick)
+        main.removeCallbacks(badgeTick); main.post(badgeTick)
+        if (cloud.signedIn) Thread { cloud.checkAdmin(); cloud.touch() }.start()
+    }
+
     override fun onPause() {
         super.onPause()
+        resumed = false
+        main.removeCallbacks(tick); main.removeCallbacks(badgeTick)
         web.url?.let { prefs.edit().putString("lastUrl", it).apply() }
         CookieManager.getInstance().flush()
     }

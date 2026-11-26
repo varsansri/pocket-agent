@@ -5,3 +5,4 @@ agent-home/
 access-key.txt
 bin/
 saved-info.json
+supabase/.temp/
