@@ -82,6 +82,7 @@ class Overlays(private val a: MainActivity, private val layer: FrameLayout, priv
     fun showWall(forced: Boolean, reason: String? = null, after: (() -> Unit)? = null) {
         if (wallView != null) { if (forced) wallForced = true; return }
         wallForced = forced
+        Track.event(if (forced) "wall_shown" else "signup_opened", JSONObject().put("reason", reason ?: if (forced) "2 minutes" else "menu"))
         var signUp = true
         val box = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL; setPadding(a.dp(24), a.dp(28), a.dp(24), a.dp(24)) }
         val title = text("", 24f, bold = true)
@@ -126,13 +127,17 @@ class Overlays(private val a: MainActivity, private val layer: FrameLayout, priv
             if (problem != null) { error.text = problem; error.visibility = View.VISIBLE; return@setOnClickListener }
             hideKeyboard(box)
             go.isEnabled = false; go.alpha = 0.5f; go.text = "One moment…"
+            Track.event(if (signUp) "signup_attempt" else "signin_attempt", JSONObject().put("forced", forced).put("mobile", m.isNotEmpty()))
             bg({ if (signUp) cloud.signUp(n, e, p, m) else cloud.signIn(e, p) }) { r ->
                 go.isEnabled = true; go.alpha = 1f
                 r.onSuccess {
+                    Track.event(if (signUp) "signup_completed" else "signed_in", JSONObject().put("forced", forced).put("mobile", m.isNotEmpty()))
+                    Track.flush()
                     remove(wallView); wallView = null; wallForced = false
                     a.signedInChanged()
                     after?.invoke()
                 }.onFailure {
+                    Track.event(if (signUp) "signup_failed" else "signin_failed", JSONObject().put("reason", it.message ?: "?"))
                     paint()
                     error.text = it.message ?: "Something went wrong. Try again."
                     error.visibility = View.VISIBLE
@@ -147,7 +152,7 @@ class Overlays(private val a: MainActivity, private val layer: FrameLayout, priv
         box.addView(go, lp(18))
         box.addView(swap, lp(6))
         box.addView(later, lp(0))
-        box.addView(text("Free. We never sell your details. Your saved info stays on this phone.", 12f, a.grey).apply { gravity = Gravity.CENTER }, lp(14))
+        box.addView(text("Free. We never sell your details. Your saved info stays on this phone. We see how the app is used, including what you ask the AI, so we can make it better.", 12f, a.grey).apply { gravity = Gravity.CENTER }, lp(14))
         paint()
         val scroll = ScrollView(a).apply { setBackgroundColor(Color.WHITE); isClickable = true; isFillViewport = true; addView(box) }
         wallView = scroll
@@ -163,6 +168,7 @@ class Overlays(private val a: MainActivity, private val layer: FrameLayout, priv
         }
         val iAmAdmin = person != null && person != cloud.userId
         val conv = person ?: cloud.userId
+        Track.event("chat_opened", JSONObject().put("admin", iAmAdmin))
         closeChat()
         val root = screen()
         val head = LinearLayout(a).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(a.dp(4), a.dp(6), a.dp(12), a.dp(6)) }
@@ -211,6 +217,7 @@ class Overlays(private val a: MainActivity, private val layer: FrameLayout, priv
                 if (msg.isEmpty()) return@setOnClickListener
                 input.setText("")
                 isEnabled = false
+                Track.event("message_sent", JSONObject().put("admin", iAmAdmin).put("len", msg.length))
                 bg({ cloud.send(conv, msg, iAmAdmin) }) { r ->
                     isEnabled = true
                     r.onSuccess { load() }.onFailure {
@@ -327,7 +334,9 @@ class Overlays(private val a: MainActivity, private val layer: FrameLayout, priv
         m.menu.add(0, 3, 2, "📒  Saved info")
         m.menu.add(0, 4, 3, "⚙  Settings")
         m.menu.add(0, 5, 4, if (cloud.signedIn) "👤  ${cloud.name.ifEmpty { cloud.email }} · Sign out" else "👤  Sign in")
+        Track.event("menu", JSONObject().put("item", "open"))
         m.setOnMenuItemClickListener {
+            Track.event("menu", JSONObject().put("item", it.title.toString().replace(Regex("[^A-Za-z ]"), "").trim().take(30)))
             when (it.itemId) {
                 1 -> openChat()
                 2 -> openInbox()
@@ -335,7 +344,7 @@ class Overlays(private val a: MainActivity, private val layer: FrameLayout, priv
                 4 -> a.showSettings(false)
                 5 -> if (cloud.signedIn) {
                     android.app.AlertDialog.Builder(a).setMessage("Sign out of Pocket Agent?")
-                        .setPositiveButton("Sign out") { _, _ -> cloud.signOut(); a.signedInChanged() }
+                        .setPositiveButton("Sign out") { _, _ -> Track.event("signed_out"); Track.flush(); cloud.signOut(); a.signedInChanged() }
                         .setNegativeButton("Cancel", null).show()
                 } else showWall(false)
             }

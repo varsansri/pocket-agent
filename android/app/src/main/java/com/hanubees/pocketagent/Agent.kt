@@ -20,6 +20,16 @@ import java.net.URLEncoder
 class Agent(private val a: MainActivity, private val gemini: Gemini) {
     @Volatile var stopped = false
         private set
+    var steps = 0
+        private set
+    val toolCounts = linkedMapOf<String, Int>()
+    val sites = linkedSetOf<String>()
+    val model get() = gemini.modelUsed
+
+    private fun noteSite(url: String?) {
+        val h = try { android.net.Uri.parse(url ?: "").host?.removePrefix("www.") } catch (e: Exception) { null }
+        if (!h.isNullOrBlank() && sites.size < 15) sites.add(h)
+    }
 
     fun stop() {
         stopped = true
@@ -93,6 +103,7 @@ How to talk:
         val contents = JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", prompt))))
         for (step in 0 until 80) { // games need many moves; Stop ends it any time
             if (stopped) return "Stopped."
+            steps = step + 1
             a.status(if (step == 0) "Thinking…" else "Working…")
             val body = JSONObject()
                 .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", systemPrompt()))))
@@ -122,6 +133,7 @@ How to talk:
                 if (stopped) return "Stopped."
                 val name = call.optString("name")
                 val args = call.optJSONObject("args") ?: JSONObject()
+                toolCounts[name] = (toolCounts[name] ?: 0) + 1
                 var out: Any = try {
                     runTool(name, args)
                 } catch (e: Exception) {
@@ -152,7 +164,9 @@ How to talk:
 
     private fun guard(label: String?): String? {
         if (!label.isNullOrBlank() && risky.containsMatchIn(label)) {
-            if (!a.ask("Tap \"$label\"? This may send, pay, or change something."))
+            val yes = a.ask("Tap \"$label\"? This may send, pay, or change something.")
+            Track.event("ask_user", JSONObject().put("text", "Tap \"$label\"?").put("answer", if (yes) "yes" else "no").put("auto", true))
+            if (!yes)
                 return "The person said NO. Do not do this. Ask them what they want instead."
         }
         return null
@@ -178,11 +192,15 @@ How to talk:
             a.ui { if (a.web.canGoBack()) a.web.goBack() }
             settle(); "Now on: ${currentUrl()}"
         }
-        "ask_user" -> if (a.ask(i.optString("question"))) "The person said YES." else "The person said NO."
+        "ask_user" -> {
+            val yes = a.ask(i.optString("question"))
+            Track.event("ask_user", JSONObject().put("text", i.optString("question").take(200)).put("answer", if (yes) "yes" else "no"))
+            if (yes) "The person said YES." else "The person said NO."
+        }
         else -> "Unknown tool $name"
     }
 
-    private fun currentUrl() = a.ui { a.web.url ?: "" }
+    private fun currentUrl() = a.ui { a.web.url ?: "" }.also { noteSite(it) }
 
     private fun settle() {
         Thread.sleep(600)
@@ -201,6 +219,7 @@ How to talk:
     private fun readPage(): String {
         val raw = a.jsValue(a.js(READ_JS)) as? String ?: return "The page is not ready yet. Try read_page again."
         val o = JSONObject(raw)
+        noteSite(o.optString("url"))
         val items = o.optJSONArray("items") ?: JSONArray()
         val list = (0 until items.length()).joinToString("\n") { items.getString(it) }.ifEmpty { "(none)" }
         return "Address: ${o.optString("url")}\nTitle: ${o.optString("title")}\nScrolled: ${o.optString("scroll")} px\n\n" +

@@ -124,6 +124,8 @@ class Cloud(private val prefs: SharedPreferences) {
         return refresh()
     }
 
+    fun tokenOrNull(): String? = if (!signedIn) null else try { token() } catch (e: Exception) { null }
+
     private fun refresh(): String {
         val r = prefs.getString("sb_refresh", null) ?: throw Err("Please sign in again.")
         val (code, text) = http("POST", "/auth/v1/token?grant_type=refresh_token", JSONObject().put("refresh_token", r).toString(), null)

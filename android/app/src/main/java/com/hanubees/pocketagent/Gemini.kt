@@ -18,6 +18,8 @@ class Gemini(private val key: String, chosen: String) {
     private var at = lastGood?.takeIf { System.currentTimeMillis() - lastGoodAt < 10 * 60_000 }
         ?.let { chain.indexOf(it) }?.takeIf { it >= 0 } ?: 0
 
+    val modelUsed: String get() = chain[at.coerceAtMost(chain.size - 1)]
+
     fun generate(body: JSONObject): JSONObject {
         var last: Failed? = null
         while (at < chain.size) {

@@ -61,6 +61,9 @@ class MainActivity : Activity() {
     private var unread = 0
     private var wallDue = false
     private var resumed = false
+    private var sessionStart = 0L
+    private var nextIsVoice = false
+    private var lastBrowseHost = ""
 
     @Volatile var pageLoading = false
     private var agent: Agent? = null
@@ -145,6 +148,7 @@ class MainActivity : Activity() {
         prefs = getSharedPreferences("pocket-agent", Context.MODE_PRIVATE)
         notes = Notes(prefs)
         cloud = Cloud(prefs)
+        Track.init(this, prefs, cloud)
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.WHITE) }
 
@@ -296,6 +300,12 @@ class MainActivity : Activity() {
             }
             override fun onPageFinished(view: WebView, url: String) {
                 pageLoading = false
+                // sites people open themselves (the AI's own visits are in task_done)
+                val host = Uri.parse(url).host?.removePrefix("www.") ?: ""
+                if (agent == null && host.isNotEmpty() && host != lastBrowseHost) {
+                    lastBrowseHost = host
+                    Track.event("browse", org.json.JSONObject().put("host", host))
+                }
                 if (!address.hasFocus()) address.setText(url)
                 CookieManager.getInstance().flush()
             }
@@ -365,6 +375,10 @@ class MainActivity : Activity() {
         val ag = Agent(this, Gemini(key, prefs.getString("model", null)?.ifBlank { null } ?: DEFAULT_MODEL))
         agent = ag
         setBusy(true)
+        val startedAt = System.currentTimeMillis()
+        val voice = nextIsVoice.also { nextIsVoice = false }
+        Track.event("task_started", org.json.JSONObject().put("text", text.take(300)).put("voice", voice)
+            .put("host", Uri.parse(web.url ?: "").host ?: ""))
         Thread {
             var detail = ""
             val answer = try {
@@ -377,6 +391,19 @@ class MainActivity : Activity() {
                 detail = "${e.javaClass.simpleName}: ${e.message?.take(300)}" + (if (at != null) " (at ${at.fileName}:${at.lineNumber})" else "")
                 if (ag.stopped) "Stopped." else "Something broke inside the app."
             }
+            val outcome = when {
+                ag.stopped || answer == "Stopped." -> "stopped"
+                detail.isNotEmpty() -> "error"
+                answer.startsWith("I took too many steps") -> "gave_up"
+                else -> "ok"
+            }
+            Track.event("task_done", org.json.JSONObject()
+                .put("text", text.take(300)).put("voice", voice).put("outcome", outcome)
+                .put("steps", ag.steps).put("secs", (System.currentTimeMillis() - startedAt) / 1000)
+                .put("model", ag.model).put("sites", org.json.JSONArray(ag.sites.toList()))
+                .put("tools", org.json.JSONObject(ag.toolCounts as Map<*, *>))
+                .put("answer", answer.take(300))
+                .apply { if (outcome == "error") put("error", (if (answer.startsWith("Something broke")) detail else answer).take(200)) })
             main.post {
                 agent = null
                 setBusy(false)
@@ -416,7 +443,7 @@ class MainActivity : Activity() {
         when (requestCode) {
             REQ_MIC -> if (resultCode == RESULT_OK) {
                 val said = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
-                if (!said.isNullOrBlank()) { input.setText(said); onSend() }
+                if (!said.isNullOrBlank()) { input.setText(said); nextIsVoice = true; onSend() }
             }
             REQ_FILE -> {
                 fileCallback?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data))
@@ -466,6 +493,8 @@ class MainActivity : Activity() {
                 Toast.makeText(this, "Checking your key…", Toast.LENGTH_SHORT).show()
                 Thread {
                     val problem = Gemini(usable, model.ifBlank { DEFAULT_MODEL }).ping()
+                    Track.event("key_check", org.json.JSONObject().put("outcome", if (problem == null) "ok" else "fail")
+                        .put("builtin", key.isEmpty()).apply { if (problem != null) put("error", problem.take(200)) })
                     main.post {
                         AlertDialog.Builder(this)
                             .setTitle(if (problem == null) "✓ Your key works" else "The key didn't work")
@@ -526,6 +555,7 @@ class MainActivity : Activity() {
     private val tick = object : Runnable {
         override fun run() {
             if (!resumed) return
+            if (!overlays.wallUp) prefs.edit().putLong("usedMsTotal", prefs.getLong("usedMsTotal", 0) + 1000).apply()
             if (!cloud.signedIn && !overlays.wallUp) {
                 // time looking at the wall is not time using the app, so the clock only runs while it's down
                 val used = prefs.getLong("usedMs", 0) + 1000
@@ -565,6 +595,9 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         resumed = true
+        sessionStart = System.currentTimeMillis()
+        Track.event("app_open", org.json.JSONObject().put("signed_in", cloud.signedIn))
+        Track.flush()
         main.removeCallbacks(tick); main.post(tick)
         main.removeCallbacks(badgeTick); main.post(badgeTick)
         if (cloud.signedIn) Thread { cloud.checkAdmin(); cloud.touch() }.start()
@@ -573,6 +606,8 @@ class MainActivity : Activity() {
     override fun onPause() {
         super.onPause()
         resumed = false
+        Track.event("session_end", org.json.JSONObject().put("secs", (System.currentTimeMillis() - sessionStart) / 1000))
+        Track.flush()
         main.removeCallbacks(tick); main.removeCallbacks(badgeTick)
         web.url?.let { prefs.edit().putString("lastUrl", it).apply() }
         CookieManager.getInstance().flush()
